@@ -174,3 +174,23 @@ output: `bench/toggle-stress-linux-dev.txt`.
 * librespot (Spotify playback) adds its session, decryption and decoder buffers once
   signed in; this could not be measured here (no Spotify access) — the in-app dashboard
   shows it on your PC.
+
+## v0.4.0 (architecture preparation) — A/B check
+
+The workspace split and sync models add no threads or timers. To check for a regression,
+both Windows release builds were run the same way under Wine 9 / Xvfb:
+
+- portable mode;
+- playing two local WAV files;
+- Home page;
+- sampled 30–40 s after start.
+
+| Build | RssAnon (private, incl. Wine) | VmRSS |
+|---|---|---|
+| 0.3.2 | 76.3 MB | 164.2 MB |
+| 0.4.0 | 76.6 MB | 164.3 MB |
+
+The +0.3 MB difference is within run-to-run variation. Under Wine these numbers include
+Wine's own allocations, so compare only the two builds with each other. Neither is the
+native Windows figure; see the Linux numbers above for the app's own footprint. The
+200 MB target is unchanged.

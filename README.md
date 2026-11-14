@@ -323,10 +323,11 @@ cargo build --release --no-default-features --features local-files
 ## Testing and benchmarking
 
 ```bash
-cargo test                       # unit + integration tests
+cargo test --workspace           # unit + integration tests (all crates)
+scripts/check-portable.sh        # portable crates have no UI/audio/OS deps; aqua-core builds for Android
 ```
 
-* 86 unit tests (including Similarity Radio and its live self-test harness: the four discovery modes differ as specified,
+* 111 unit tests across the workspace (including Similarity Radio and its live self-test harness: the four discovery modes differ as specified,
   duplicate/artist/recently-played/skip/like rules, unplayable candidates dropped, Last.fm
   response parsing, history bounds), plus: config persistence/migration/invalid files, feature registry and
   presets, disable/restore visuals, shortcut parsing and conflicts, theme loading and
@@ -344,35 +345,58 @@ cargo test                       # unit + integration tests
   engine: auto-advance (gapless and not, including a track shorter than the buffer), seek,
   pause, end of queue, missing files, Spotify without a session. It needs an audio device
   (on Linux CI: PulseAudio with `module-null-sink`); it skips when none exists.
+* Sync model (`crates/aqua-core`): serialization round trips, schema-version checks, a frozen
+  schema-1 fixture that must keep decoding and re-encoding identically, queue-state
+  preservation (manual items stay ahead of radio items after a round trip), deterministic
+  merges for like/unlike and two-device playlist edits, reconnect-after-days history merge,
+  handoff planning, no secrets or local paths in payloads.
 * `bench/run_bench.py` and `bench/soak.py` reproduce the memory benchmarks; see
   [docs/BENCHMARKS.md](docs/BENCHMARKS.md) for the procedure, environment and results.
 
 ## Architecture
 
+The repository is a Cargo workspace. The Windows desktop app is the root package; code
+that a future Android client (or a sync server) can reuse lives in platform-independent
+crates. See [docs/future-mobile-architecture.md](docs/future-mobile-architecture.md).
+
 ```
-src/
+crates/
+  aqua-core/         portable core (no UI/audio/OS deps; compiles for aarch64-linux-android)
+    model.rs         provider-neutral Track / Playlist / Album / Artist, ProviderKind
+    queue.rs         play queue: order, shuffle, repeat, Context/Manual/Radio entry origins
+    playback.rs      PlaybackControl trait (platform audio implements it), PlayerState
+    history.rs       local listening history (bounded)
+    library.rs       import cache, snapshot-based sync, conflicts, backups
+    matching.rs      cross-service track matching
+    prefs.rs         portable Similarity Radio preferences
+    session.rs       saved "remember queue" session (keeps entry origins)
+    sync/            versioned cross-device sync + handoff data model (no networking)
+    secrets.rs, storage.rs, platform.rs   hooks the platform fills in (secret store,
+                     data directory, browser launcher)
+  aqua-providers/    oauth (PKCE loopback), spotify (Web API), youtube (Data API), lastfm,
+                     lyrics, shared rate limiter — reqwest + rustls, no OS APIs
+  aqua-radio/        Similarity Radio: gather (Last.fm) → rank/filter → resolve → queue
+                     refill, driven through PlaybackControl
+src/                 Windows desktop app
   main.rs            entry point (windows_subsystem in release)
   lib.rs             run(): CLI, window options
+  util.rs            data directory, platform hook installation, logging
   config.rs          settings.toml model, versioned migration, import/export, presets
   features.rs        registry of every optional feature (id, text, RAM estimate, deps, presets)
   perf.rs            Windows process metrics, per-feature measurement, memory pressure
-  security.rs        Credential Manager storage, secret scrubbing
-  model.rs           provider-neutral Track / Playlist / Album / Artist
-  library.rs         import cache, snapshot-based sync, conflicts, backups
-  matching.rs        cross-service track matching
+  security.rs        Windows Credential Manager secret store
+  syncprep.rs        desktop ↔ sync model conversion, --export-sync-snapshot
   transfer.rs        JSON/CSV/M3U export/import, transfer plan + execution + logs
   theme.rs           declarative TOML themes → egui style
   shortcuts.rs       actions, binding parser, conflict detection
   artwork.rs         downscaling image loader, LRU texture cache with byte budget, blur
   discord.rs         Rich Presence worker (exists only while enabled)
-  history.rs         local listening history (bounded)
-  radio.rs           Similarity Radio: gather (Last.fm) → rank/filter → resolve → queue
   winint.rs          tray, SMTC media controls, global hotkeys, autostart, toasts, acrylic
-  services/          oauth (PKCE loopback), spotify (Web API), youtube (Data API), lyrics, lastfm
+  model/history/library/matching/radio/services.rs   re-exports of the portable crates
   audio/
     output.rs        single cpal/WASAPI output: ring buffer, volume, fades, visualizer tap
     dsp.rs           EQ, bass shelf, preamp/ReplayGain, balance, resampler
-    engine.rs        playback engine thread: queue, backends, gapless hand-off
+    engine.rs        playback engine thread (implements PlaybackControl), gapless hand-off
     spotify.rs       librespot session + custom Sink into our output
     local.rs         symphonia decoding, tag probing, folder scan
     visualizer.rs    FFT analyzer (runs only while visible)

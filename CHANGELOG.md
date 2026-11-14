@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.4.0 — 2026-11-14 (architecture preparation for mobile and cross-device sync)
+
+No new user-facing features and no change in behaviour, except that a restored queue now
+remembers which songs were added manually and which were Similarity Radio picks. Nothing
+new runs in the background; there is no sync server, sync client or device discovery.
+
+### Changed
+- **Cargo workspace.** Portable code moved into crates the Windows app re-exports:
+  - `aqua-core`: models, queue, history, library, matching, playback interface, sync
+    models. It has no UI, audio or OS dependencies and compiles for `aarch64-linux-android`.
+  - `aqua-providers`: Spotify, YouTube, Last.fm, lyrics, OAuth and the rate limiter.
+  - `aqua-radio`: Similarity Radio.
+- Platform hooks: secret store (Windows Credential Manager adapter), data directory and
+  browser launcher are installed by the desktop app at startup.
+- `PlaybackControl` trait: the desktop engine implements it, and Similarity Radio now
+  drives playback only through it.
+- Queue entries carry their origin (context / manual / radio). The saved session (v2)
+  keeps the origin; v1 session files are still read.
+- Radio preferences have a portable form (`RadioPrefs`) shared by the desktop config and
+  the runtime radio settings.
+
+### Added
+- `aqua_core::sync`: versioned (schema 1), serde-serialisable models for:
+  - listening state, queue state and library state (playlists, favourites, saved albums,
+    saved recommendations, history);
+  - shareable settings and device identity;
+  - playback-handoff offers and planning;
+  - an offline outbox.
+
+  Merges are deterministic (hybrid logical clocks, last-writer-wins with tombstones,
+  item-level playlist merge). Payloads contain no secrets and no local file paths.
+- `aqua-glass.exe --export-sync-snapshot [file]`: writes this PC's data in the sync format.
+  It runs once and exits, without any network access.
+- `scripts/check-portable.sh`, a frozen schema-1 compatibility fixture, and tests for
+  serialization, queue-state preservation, conflict handling and handoff.
+- Docs: `docs/future-mobile-architecture.md` and `docs/sync-server.md` (a proposed
+  self-hosted server; not implemented).
+
 ## 0.3.2 — 2026-11-14 (Spotify rate limiting)
 
 ### Fixed

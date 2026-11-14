@@ -30,7 +30,9 @@ Other files in the data folder:
 | `transfers/` | transfer logs and JSON backups of transfer sources |
 | `exports/` | default location for exported playlists/settings/themes |
 | `cache/artwork/` | downscaled cover JPEGs ("Artwork Disk Cache") |
-| `session.json` | saved queue ("Restore Queue on Launch") |
+| `session.json` | saved queue ("Restore Queue on Launch"); v2 keeps which entries were manual / radio picks |
+| `device.json` | random device id + name, created only by `--export-sync-snapshot` (future sync); no hardware or account data |
+| `sync-snapshot-*.json` | output of `--export-sync-snapshot` (no secrets, no local file paths) |
 | `aqua-glass.log` | only when "Diagnostic Logging" is on |
 
 ## Feature toggles (`[features]`)
