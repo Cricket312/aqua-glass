@@ -1,0 +1,74 @@
+[package]
+name = "aqua-glass"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+description = "Aqua Glass - a lightweight native Spotify + YouTube Music client for Windows 11"
+license = "MIT"
+
+[features]
+default = ["spotify-playback", "discord", "local-files"]
+# librespot-based Spotify Premium playback. Without it, Spotify library/sync/transfer still work.
+spotify-playback = ["dep:librespot-core", "dep:librespot-playback", "dep:librespot-metadata"]
+# Discord Rich Presence IPC client.
+discord = ["dep:discord-rich-presence"]
+# Local audio file playback (symphonia decoders).
+local-files = ["dep:symphonia"]
+# Screen-reader support (adds AccessKit; costs a few MB).
+accessibility = ["eframe/accesskit"]
+
+[dependencies]
+eframe = { version = "0.37", default-features = false, features = ["glow", "default_fonts"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.9"
+anyhow = "1"
+log = "0.4"
+directories = "6"
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json", "query", "form", "charset", "blocking"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "time", "macros", "net", "io-util"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+rustfft = "6"
+sha2 = "0.10"
+base64 = "0.22"
+rand = "0.9"
+url = "2"
+open = "5"
+csv = "1"
+time = { version = "0.3", features = ["formatting", "macros", "local-offset"] }
+simplelog = "0.12"
+
+librespot-core = { version = "0.8.0", default-features = false, features = ["rustls-tls-webpki-roots"], optional = true }
+librespot-playback = { version = "0.8.0", default-features = false, features = ["rustls-tls-webpki-roots"], optional = true }
+librespot-metadata = { version = "0.8.0", default-features = false, features = ["rustls-tls-webpki-roots"], optional = true }
+discord-rich-presence = { version = "1.1", optional = true }
+symphonia = { version = "0.5", default-features = false, features = ["mp3", "flac", "vorbis", "ogg", "wav", "pcm", "aac", "isomp4"], optional = true }
+cpal = "0.18.2"
+
+[target.'cfg(windows)'.dependencies]
+global-hotkey = "0.10.0"
+keyring = { version = "3.6.3", features = ["windows-native"] }
+raw-window-handle = "0.6"
+rfd = "0.17.2"
+souvlaki = "0.8.3"
+tauri-winrt-notification = "0.8.1"
+tray-icon = "0.24.2"
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_ProcessStatus", "Win32_System_Threading", "Win32_Graphics_Dwm", "Win32_UI_WindowsAndMessaging", "Win32_System_SystemInformation"] }
+winreg = "0.56.0"
+
+[dev-dependencies]
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.dev.package."*"]
+opt-level = 2
+
+# Linux is only used for development/CI (tests, headless measurements).
+[target.'cfg(target_os = "linux")'.dependencies]
+eframe = { version = "0.37", default-features = false, features = ["glow", "default_fonts", "x11"] }
