@@ -1,0 +1,446 @@
+{
+  "schema": 1,
+  "kind": "snapshot",
+  "device": "9f2c6a1e5b7d4c3a8e0f1b2c3d4e5f60",
+  "created_ms": 1763000005000,
+  "payload": {
+    "device": {
+      "id": "9f2c6a1e5b7d4c3a8e0f1b2c3d4e5f60",
+      "name": "Windows device",
+      "platform": "Windows",
+      "app_version": "0.4.0"
+    },
+    "listening": {
+      "device": "9f2c6a1e5b7d4c3a8e0f1b2c3d4e5f60",
+      "track": {
+        "provider": "Spotify",
+        "id": "4uLU6hMCjMI75M1A2tKUQC",
+        "title": "Song A",
+        "artists": [
+          "Artist A"
+        ],
+        "album": "Album",
+        "duration_ms": 210000,
+        "isrc": "ISRC4uLU6hMCjMI75M1A2tKUQC"
+      },
+      "position_ms": 61000,
+      "duration_ms": 210000,
+      "playing": true,
+      "updated_ms": 1763000000000,
+      "stamp": {
+        "ms": 1763000000000,
+        "ctr": 1,
+        "device": "9f2c6a1e5b7d4c3a8e0f1b2c3d4e5f60"
+      }
+    },
+    "queue": {
+      "device": "9f2c6a1e5b7d4c3a8e0f1b2c3d4e5f60",
+      "entries": [
+        {
+          "track": {
+            "provider": "Spotify",
+            "id": "4uLU6hMCjMI75M1A2tKUQC",
+            "title": "Song A",
+            "artists": [
+              "Artist A"
+            ],
+            "album": "Album",
+            "duration_ms": 210000,
+            "isrc": "ISRC4uLU6hMCjMI75M1A2tKUQC"
+          },
+          "origin": "Context"
+        },
+        {
+          "track": {
+            "provider": "Spotify",
+            "id": "7GhIk7Il098yCjg4BQjzvb",
+            "title": "Song B",
+            "artists": [
+              "Artist B"
+            ],
+            "album": "Album",
+            "duration_ms": 210000,
+            "isrc": "ISRC7GhIk7Il098yCjg4BQjzvb"
+          },
+          "origin": "Context"
+        },
+        {
+          "track": {
+            "provider": "YouTube",
+            "id": "dQw4w9WgXcQ",
+            "title": "Song C",
+            "artists": [
+              "Artist C"
+            ],
+            "album": "Album",
+            "duration_ms": 210000
+          },
+          "origin": "Manual"
+        },
+        {
+          "track": {
+            "provider": "Spotify",
+            "id": "3n3Ppam7vgaVa1iaRUc9Lp",
+            "title": "Song D",
+            "artists": [
+              "Artist D"
+            ],
+            "album": "Album",
+            "duration_ms": 210000,
+            "isrc": "ISRC3n3Ppam7vgaVa1iaRUc9Lp"
+          },
+          "origin": "Radio"
+        }
+      ],
+      "current": 0,
+      "shuffle": false,
+      "repeat": "Off",
+      "radio": {
+        "seed": {
+          "provider": "Spotify",
+          "id": "4uLU6hMCjMI75M1A2tKUQC",
+          "title": "Song A",
+          "artists": [
+            "Artist A"
+          ],
+          "album": "Album",
+          "duration_ms": 210000,
+          "isrc": "ISRC4uLU6hMCjMI75M1A2tKUQC"
+        },
+        "original_seed": {
+          "provider": "Spotify",
+          "id": "4uLU6hMCjMI75M1A2tKUQC",
+          "title": "Song A",
+          "artists": [
+            "Artist A"
+          ],
+          "album": "Album",
+          "duration_ms": 210000,
+          "isrc": "ISRC4uLU6hMCjMI75M1A2tKUQC"
+        },
+        "prefs": {
+          "enabled": true,
+          "start_from_search": true,
+          "start_from_artist": false,
+          "start_from_album": false,
+          "strength": "Balanced",
+          "target": 15,
+          "threshold": 5,
+          "provider": "Automatic",
+          "endless": true,
+          "prefer_unheard": true,
+          "avoid_recent": true,
+          "avoid_duplicates": true,
+          "allow_repeat_artists": false,
+          "learn": true,
+          "stay_close": false
+        }
+      },
+      "stamp": {
+        "ms": 1763000000000,
+        "ctr": 0,
+        "device": "9f2c6a1e5b7d4c3a8e0f1b2c3d4e5f60"
+      }
+    },
+    "library": {
+      "playlists": {
+        "Spotify:37i9dQZF1DXcBWIGoYBM5M": {
+          "id": "Spotify:37i9dQZF1DXcBWIGoYBM5M",
+          "origin": {
+            "Provider": {
+              "provider": "Spotify",
+              "provider_id": "37i9dQZF1DXcBWIGoYBM5M",
+              "snapshot": "snap1"
+            }
+          },
+          "name": {
+            "value": "Imported",
+            "stamp": {
+              "ms": 1763000002000,
+              "ctr": 0,
+              "device": "9f2c6a1e5b7d4c3a8e0f1b2c3d4e5f60"
+            }
+          },
+          "description": {
+            "value": "",
+            "stamp": {
+              "ms": 1763000002000,
+              "ctr": 0,
+              "device": "9f2c6a1e5b7d4c3a8e0f1b2c3d4e5f60"
+            }
+          },
+          "deleted": {
+            "value": false,
+            "stamp": {
+              "ms": 1763000002000,
+              "ctr": 0,
+              "device": "9f2c6a1e5b7d4c3a8e0f1b2c3d4e5f60"
+            }
+          },
+          "items": {
+            "000000": {
+              "track": {
+                "provider": "Spotify",
+                "id": "7GhIk7Il098yCjg4BQjzvb",
+                "title": "Song B",
+                "artists": [
+                  "Artist B"
+                ],
+                "album": "Album",
+                "duration_ms": 210000,
+                "isrc": "ISRC7GhIk7Il098yCjg4BQjzvb"
+              },
+              "pos": {
+                "value": 0.0,
+                "stamp": {
+                  "ms": 1763000002000,
+                  "ctr": 0,
+                  "device": "9f2c6a1e5b7d4c3a8e0f1b2c3d4e5f60"
+                }
+              },
+              "present": {
+                "value": true,
+                "stamp": {
+                  "ms": 1763000002000,
+                  "ctr": 0,
+                  "device": "9f2c6a1e5b7d4c3a8e0f1b2c3d4e5f60"
+                }
+              }
+            }
+          },
+          "listed": {
+            "ms": 1763000002000,
+            "ctr": 0,
+            "device": "9f2c6a1e5b7d4c3a8e0f1b2c3d4e5f60"
+          }
+        },
+        "local:9f2c6a1e5b7d4c3a8e0f1b2c3d4e5f60:1763000001000:0": {
+          "id": "local:9f2c6a1e5b7d4c3a8e0f1b2c3d4e5f60:1763000001000:0",
+          "origin": "Local",
+          "name": {
+            "value": "Evening",
+            "stamp": {
+              "ms": 1763000001000,
+              "ctr": 0,
+              "device": "9f2c6a1e5b7d4c3a8e0f1b2c3d4e5f60"
+            }
+          },
+          "description": {
+            "value": "",
+            "stamp": {
+              "ms": 1763000001000,
+              "ctr": 0,
+              "device": "9f2c6a1e5b7d4c3a8e0f1b2c3d4e5f60"
+            }
+          },
+          "deleted": {
+            "value": false,
+            "stamp": {
+              "ms": 1763000001000,
+              "ctr": 0,
+              "device": "9f2c6a1e5b7d4c3a8e0f1b2c3d4e5f60"
+            }
+          },
+          "items": {
+            "9f2c6a1e5b7d4c3a8e0f1b2c3d4e5f60:1763000001001:0": {
+              "track": {
+                "provider": "Spotify",
+                "id": "4uLU6hMCjMI75M1A2tKUQC",
+                "title": "Song A",
+                "artists": [
+                  "Artist A"
+                ],
+                "album": "Album",
+                "duration_ms": 210000,
+                "isrc": "ISRC4uLU6hMCjMI75M1A2tKUQC"
+              },
+              "pos": {
+                "value": 1.0,
+                "stamp": {
+                  "ms": 1763000001001,
+                  "ctr": 0,
+                  "device": "9f2c6a1e5b7d4c3a8e0f1b2c3d4e5f60"
+                }
+              },
+              "present": {
+                "value": true,
+                "stamp": {
+                  "ms": 1763000001001,
+                  "ctr": 0,
+                  "device": "9f2c6a1e5b7d4c3a8e0f1b2c3d4e5f60"
+                }
+              }
+            },
+            "9f2c6a1e5b7d4c3a8e0f1b2c3d4e5f60:1763000001002:0": {
+              "track": {
+                "provider": "Local",
+                "id": "local band|local song",
+                "title": "Local Song",
+                "artists": [
+                  "Local Band"
+                ],
+                "album": "Album",
+                "duration_ms": 210000
+              },
+              "pos": {
+                "value": 2.0,
+                "stamp": {
+                  "ms": 1763000001002,
+                  "ctr": 0,
+                  "device": "9f2c6a1e5b7d4c3a8e0f1b2c3d4e5f60"
+                }
+              },
+              "present": {
+                "value": true,
+                "stamp": {
+                  "ms": 1763000001002,
+                  "ctr": 0,
+                  "device": "9f2c6a1e5b7d4c3a8e0f1b2c3d4e5f60"
+                }
+              }
+            }
+          },
+          "listed": {
+            "ms": 0,
+            "ctr": 0,
+            "device": ""
+          }
+        }
+      },
+      "favorites": {
+        "Spotify:4uLU6hMCjMI75M1A2tKUQC": {
+          "value": {
+            "provider": "Spotify",
+            "id": "4uLU6hMCjMI75M1A2tKUQC",
+            "title": "Song A",
+            "artists": [
+              "Artist A"
+            ],
+            "album": "Album",
+            "duration_ms": 210000,
+            "isrc": "ISRC4uLU6hMCjMI75M1A2tKUQC"
+          },
+          "stamp": {
+            "ms": 1763000003000,
+            "ctr": 0,
+            "device": "9f2c6a1e5b7d4c3a8e0f1b2c3d4e5f60"
+          }
+        },
+        "Spotify:7GhIk7Il098yCjg4BQjzvb": {
+          "value": null,
+          "stamp": {
+            "ms": 1763000003002,
+            "ctr": 0,
+            "device": "9f2c6a1e5b7d4c3a8e0f1b2c3d4e5f60"
+          }
+        }
+      },
+      "saved_albums": {},
+      "saved_recommendations": {
+        "Spotify:4uLU6hMCjMI75M1A2tKUQC": {
+          "value": {
+            "provider": "Spotify",
+            "id": "4uLU6hMCjMI75M1A2tKUQC",
+            "title": "Song A",
+            "artists": [
+              "Artist A"
+            ],
+            "album": "Album",
+            "duration_ms": 210000,
+            "isrc": "ISRC4uLU6hMCjMI75M1A2tKUQC"
+          },
+          "stamp": {
+            "ms": 1763000003003,
+            "ctr": 0,
+            "device": "9f2c6a1e5b7d4c3a8e0f1b2c3d4e5f60"
+          }
+        }
+      },
+      "history": [
+        {
+          "id": "9f2c6a1e5b7d4c3a8e0f1b2c3d4e5f60:1763000003003:1",
+          "track": {
+            "provider": "Spotify",
+            "id": "4uLU6hMCjMI75M1A2tKUQC",
+            "title": "Song A",
+            "artists": [
+              "Artist A"
+            ],
+            "album": "Album",
+            "duration_ms": 210000,
+            "isrc": "ISRC4uLU6hMCjMI75M1A2tKUQC"
+          },
+          "at": 1762999000,
+          "listened_ms": 205000,
+          "completed": true,
+          "skipped": false
+        }
+      ]
+    },
+    "settings": {
+      "theme": {
+        "value": "Aqua Glass",
+        "stamp": {
+          "ms": 1763000004000,
+          "ctr": 0,
+          "device": "9f2c6a1e5b7d4c3a8e0f1b2c3d4e5f60"
+        }
+      },
+      "radio": {
+        "value": {
+          "enabled": true,
+          "start_from_search": true,
+          "start_from_artist": false,
+          "start_from_album": false,
+          "strength": "Balanced",
+          "target": 15,
+          "threshold": 5,
+          "provider": "Automatic",
+          "endless": true,
+          "prefer_unheard": true,
+          "avoid_recent": true,
+          "avoid_duplicates": true,
+          "allow_repeat_artists": false,
+          "learn": true,
+          "stay_close": false
+        },
+        "stamp": {
+          "ms": 1763000004000,
+          "ctr": 0,
+          "device": "9f2c6a1e5b7d4c3a8e0f1b2c3d4e5f60"
+        }
+      },
+      "playback": {
+        "value": {
+          "preferred_provider": "Spotify",
+          "fade_ms": 0,
+          "gapless": true,
+          "normalization": false,
+          "seek_step_s": 10
+        },
+        "stamp": {
+          "ms": 1763000004000,
+          "ctr": 0,
+          "device": "9f2c6a1e5b7d4c3a8e0f1b2c3d4e5f60"
+        }
+      },
+      "sync": {
+        "value": {
+          "history": true,
+          "playlists": true,
+          "favorites": true,
+          "queue": true,
+          "listening": true,
+          "radio_prefs": true,
+          "playback_prefs": true,
+          "theme": false
+        },
+        "stamp": {
+          "ms": 1763000004000,
+          "ctr": 0,
+          "device": "9f2c6a1e5b7d4c3a8e0f1b2c3d4e5f60"
+        }
+      }
+    }
+  }
+}

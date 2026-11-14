@@ -423,6 +423,51 @@ impl Default for Config {
 }
 
 impl Config {
+    /// The portable Similarity Radio preferences (shared model in `aqua_core::prefs`).
+    pub fn radio_prefs(&self) -> aqua_core::prefs::RadioPrefs {
+        aqua_core::prefs::RadioPrefs {
+            enabled: self.on("similarity_radio"),
+            start_from_search: self.on("radio_from_search"),
+            start_from_artist: self.on("radio_from_artist"),
+            start_from_album: self.on("radio_from_album"),
+            strength: self.radio.strength,
+            target: self.radio.target,
+            threshold: self.radio.threshold,
+            provider: self.radio.provider,
+            endless: self.on("radio_endless"),
+            prefer_unheard: self.on("radio_prefer_unheard"),
+            avoid_recent: self.on("radio_avoid_recent"),
+            avoid_duplicates: self.on("radio_avoid_duplicates"),
+            allow_repeat_artists: self.on("radio_repeat_artists"),
+            learn: self.on("radio_learn"),
+            stay_close: self.on("radio_stay_close"),
+        }
+    }
+
+    /// Apply portable radio preferences (e.g. received from another device).
+    pub fn set_radio_prefs(&mut self, p: &aqua_core::prefs::RadioPrefs) {
+        for (id, on) in [
+            ("similarity_radio", p.enabled),
+            ("radio_from_search", p.start_from_search),
+            ("radio_from_artist", p.start_from_artist),
+            ("radio_from_album", p.start_from_album),
+            ("radio_endless", p.endless),
+            ("radio_prefer_unheard", p.prefer_unheard),
+            ("radio_avoid_recent", p.avoid_recent),
+            ("radio_avoid_duplicates", p.avoid_duplicates),
+            ("radio_repeat_artists", p.allow_repeat_artists),
+            ("radio_learn", p.learn),
+            ("radio_stay_close", p.stay_close),
+        ] {
+            self.set(id, on);
+        }
+        self.radio.strength = p.strength;
+        self.radio.target = p.target;
+        self.radio.threshold = p.threshold;
+        self.radio.provider = p.provider;
+        self.sanitize();
+    }
+
     pub fn path() -> PathBuf {
         crate::util::data_dir().join("settings.toml")
     }

@@ -13,6 +13,7 @@
 //! never depend on a particular audio backend or UI toolkit.
 
 use crate::model::{RepeatMode, Track};
+use crate::queue::EntryOrigin;
 
 #[derive(Clone, Debug, PartialEq, Default)]
 pub enum SpotifyStatus {
@@ -39,8 +40,8 @@ pub struct PlayerState {
     pub message: Option<String>,
     pub error: Option<String>,
     pub spotify: SpotifyStatus,
-    /// Parallel to `queue`: which entries are radio recommendations.
-    pub queue_radio: Vec<bool>,
+    /// Parallel to `queue`: why each entry is queued (context / manual / radio).
+    pub queue_origin: Vec<EntryOrigin>,
     /// Radio recommendations still to play.
     pub radio_upcoming: usize,
     /// The most recently finished/left track (for history, skips and radio learning).
@@ -59,6 +60,13 @@ pub struct PlayRecord {
     pub skipped: bool,
     /// Sequence number so listeners can tell records apart.
     pub seq: u64,
+}
+
+impl PlayerState {
+    /// Queue entry `i` (play order) is a Similarity Radio recommendation.
+    pub fn is_radio(&self, i: usize) -> bool {
+        self.queue_origin.get(i) == Some(&EntryOrigin::Radio)
+    }
 }
 
 pub type StateListener = Box<dyn FnMut(&PlayerState) + Send>;

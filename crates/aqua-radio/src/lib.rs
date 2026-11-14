@@ -23,67 +23,11 @@ use aqua_core::model::Track;
 use aqua_core::playback::{PlayRecord, PlaybackControl, SpotifyStatus};
 use aqua_providers::lastfm::{LastFm, Similar};
 use rand::Rng;
-use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub enum Strength {
-    Familiar,
-    #[default]
-    Balanced,
-    Adventurous,
-    DeepDiscovery,
-}
-
-impl Strength {
-    pub const ALL: [Strength; 4] = [Strength::Familiar, Strength::Balanced, Strength::Adventurous, Strength::DeepDiscovery];
-    pub fn label(self) -> &'static str {
-        match self {
-            Strength::Familiar => "Familiar",
-            Strength::Balanced => "Balanced",
-            Strength::Adventurous => "Adventurous",
-            Strength::DeepDiscovery => "Deep Discovery",
-        }
-    }
-    pub fn describe(self) -> &'static str {
-        match self {
-            Strength::Familiar => "Very similar music — the closest matches to the seed track.",
-            Strength::Balanced => "Similar music with some new artists from closely related acts.",
-            Strength::Adventurous => "More variety from a wider circle of related artists, same general style.",
-            Strength::DeepDiscovery => "Favors lesser-known tracks and artists you haven't heard.",
-        }
-    }
-    fn jitter(self) -> f32 {
-        match self {
-            Strength::Familiar => 0.05,
-            Strength::Balanced => 0.15,
-            Strength::Adventurous => 0.25,
-            Strength::DeepDiscovery => 0.25,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub enum RadioProvider {
-    #[default]
-    Automatic,
-    Spotify,
-    Local,
-    YouTube,
-}
-
-impl RadioProvider {
-    pub fn label(self) -> &'static str {
-        match self {
-            RadioProvider::Automatic => "Automatic",
-            RadioProvider::Spotify => "Spotify",
-            RadioProvider::Local => "Local files",
-            RadioProvider::YouTube => "YouTube Music (opens in browser)",
-        }
-    }
-}
+pub use aqua_core::prefs::{RadioPrefs, RadioProvider, Strength};
 
 /// User preferences (from settings).
 #[derive(Clone, Debug, PartialEq)]
@@ -102,6 +46,28 @@ pub struct Prefs {
     pub lastfm_key: String,
     /// Internal: candidates come from the same-artist fallback (no per-artist cap).
     pub same_artist_source: bool,
+}
+
+impl Prefs {
+    /// Runtime preferences from the (portable, sync-able) user preferences plus
+    /// this device's Last.fm key.
+    pub fn from_user(u: &RadioPrefs, lastfm_key: &str) -> Prefs {
+        Prefs {
+            strength: u.strength,
+            target: u.target,
+            threshold: u.threshold,
+            provider: u.provider,
+            endless: u.endless,
+            prefer_unheard: u.prefer_unheard,
+            avoid_recent: u.avoid_recent,
+            avoid_duplicates: u.avoid_duplicates,
+            allow_repeat_artists: u.allow_repeat_artists,
+            learn: u.learn,
+            stay_close: u.stay_close,
+            lastfm_key: lastfm_key.to_string(),
+            same_artist_source: false,
+        }
+    }
 }
 
 impl Default for Prefs {
@@ -520,7 +486,7 @@ impl Radio {
         deps.engine.add_listener(Box::new(move |s| {
             let mut g = f2.lock().unwrap();
             if let Some(t) = g.as_ref() {
-                let cur_radio = s.queue_pos.and_then(|p| s.queue_radio.get(p)).copied().unwrap_or(false);
+                let cur_radio = s.queue_pos.is_some_and(|p| s.is_radio(p));
                 let m = Msg::Tick { current: s.current.clone(), upcoming: s.radio_upcoming, queue: s.queue.clone(), last: s.last_played.clone(), current_is_radio: cur_radio };
                 if t.send(m).is_err() {
                     *g = None;

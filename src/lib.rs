@@ -12,6 +12,7 @@ pub mod perf;
 pub mod security;
 pub mod services;
 pub mod shortcuts;
+pub mod syncprep;
 pub mod theme;
 pub mod transfer;
 pub mod util;
@@ -26,6 +27,9 @@ pub fn run() -> eframe::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     if let Some(i) = args.iter().position(|a| a == "--radio-selftest") {
         std::process::exit(radio_selftest_cli(args.get(i + 1).map(|s| s.as_str()), args.get(i + 2).map(|s| s.as_str())));
+    }
+    if let Some(i) = args.iter().position(|a| a == "--export-sync-snapshot") {
+        std::process::exit(syncprep::export_snapshot_cli(args.get(i + 1).map(|s| s.as_str())));
     }
     let start_hidden = args.iter().any(|a| a == "--minimized");
     // `aqua-glass.exe song.mp3 other.flac` plays the files (enables "Open with")

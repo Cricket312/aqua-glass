@@ -85,7 +85,7 @@ fn radio_starts_fills_refills_and_respects_manual_queue() {
     assert!(wait_until(Duration::from_secs(10), || engine.snapshot().radio_upcoming == 15), "initial fill to the target size, got {}", engine.snapshot().radio_upcoming);
     let st = engine.snapshot();
     assert_eq!(st.queue.len(), 16);
-    assert!(st.queue_radio[1..].iter().all(|r| *r));
+    assert!((1..st.queue.len()).all(|i| st.is_radio(i)));
     assert!(st.queue.iter().skip(1).all(|t| t.key() != seed.key()), "seed not recommended again");
     assert!(radio.status.lock().unwrap().source.contains("Last.fm not configured"), "fallback source is labelled");
 

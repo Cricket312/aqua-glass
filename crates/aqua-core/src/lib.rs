@@ -11,6 +11,7 @@
 //! * [`library`] — imported playlists / saved collections on disk.
 //! * [`queue`] — play queue logic (manual vs. radio entries, shuffle, repeat).
 //! * [`playback`] — the [`playback::PlaybackControl`] interface and player state.
+//! * [`prefs`] — portable Similarity Radio preferences.
 //! * [`sync`] — versioned, serialisable cross-device sync and handoff models
 //!   (data only: no networking is implemented).
 //! * [`secrets`], [`storage`], [`platform`] — hooks the platform layer fills in.
@@ -21,7 +22,9 @@ pub mod matching;
 pub mod model;
 pub mod platform;
 pub mod playback;
+pub mod prefs;
 pub mod queue;
 pub mod secrets;
+pub mod session;
 pub mod storage;
 pub mod sync;

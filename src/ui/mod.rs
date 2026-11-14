@@ -383,22 +383,7 @@ impl AquaApp {
     }
 
     pub fn radio_prefs(&self) -> crate::radio::Prefs {
-        let c = &self.cfg;
-        crate::radio::Prefs {
-            strength: c.radio.strength,
-            target: c.radio.target,
-            threshold: c.radio.threshold,
-            provider: c.radio.provider,
-            endless: c.active("radio_endless"),
-            prefer_unheard: c.active("radio_prefer_unheard"),
-            avoid_recent: c.active("radio_avoid_recent"),
-            avoid_duplicates: c.active("radio_avoid_duplicates"),
-            allow_repeat_artists: c.active("radio_repeat_artists"),
-            learn: c.active("radio_learn"),
-            stay_close: c.active("radio_stay_close"),
-            lastfm_key: self.lastfm_key.clone(),
-            same_artist_source: false,
-        }
+        crate::radio::Prefs::from_user(&self.cfg.radio_prefs(), &self.lastfm_key)
     }
 
     pub fn radio_status(&self) -> Option<crate::radio::Status> {
@@ -1448,11 +1433,9 @@ impl AquaApp {
             return;
         }
         let p = crate::util::data_dir().join("session.json");
-        if let Ok(b) = std::fs::read(&p) {
-            if let Ok((tracks, pos, ms)) = serde_json::from_slice::<(Vec<Track>, usize, u64)>(&b) {
-                if !tracks.is_empty() {
-                    self.engine.send(Cmd::Restore { tracks, start: pos, position_ms: ms });
-                }
+        if let Some(s) = std::fs::read(&p).ok().and_then(|b| aqua_core::session::SavedSession::decode(&b)) {
+            if !s.entries.is_empty() {
+                self.engine.send(Cmd::Restore { entries: s.entries, start: s.pos, position_ms: s.position_ms });
             }
         }
     }
@@ -1464,11 +1447,8 @@ impl AquaApp {
             return;
         }
         let st = self.engine.snapshot();
-        if let Some(pos) = st.queue_pos {
-            let q: Vec<Track> = st.queue.into_iter().take(5000).collect();
-            if let Ok(b) = serde_json::to_vec(&(q, pos, self.engine.position_ms())) {
-                let _ = crate::util::atomic_write(&p, &b);
-            }
+        if let Some(s) = aqua_core::session::SavedSession::from_state(&st, self.engine.position_ms()) {
+            let _ = crate::util::atomic_write(&p, &s.encode());
         }
     }
 

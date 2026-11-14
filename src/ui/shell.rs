@@ -700,7 +700,7 @@ fn queue_tab(app: &mut AquaApp, ui: &mut Ui) {
         ui.separator();
     }
     let pos = st.queue_pos.map(|p| p + 1).unwrap_or(0);
-    let upcoming: Vec<(usize, &crate::model::Track, bool)> = st.queue.iter().enumerate().skip(pos).map(|(i, t)| (i, t, st.queue_radio.get(i).copied().unwrap_or(false))).collect();
+    let upcoming: Vec<(usize, &crate::model::Track, bool)> = st.queue.iter().enumerate().skip(pos).map(|(i, t)| (i, t, st.is_radio(i))).collect();
     ui.horizontal(|ui| {
         ui.label(RichText::new(format!("Up Next ({})", upcoming.len())).size(16.0).strong());
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -745,7 +745,7 @@ fn radio_tab(app: &mut AquaApp, ui: &mut Ui) {
     let mut cmd = None;
     let mut save = false;
     let pos = st.queue_pos.map(|p| p + 1).unwrap_or(0);
-    let recs: Vec<(usize, &crate::model::Track)> = st.queue.iter().enumerate().skip(pos).filter(|(i, _)| st.queue_radio.get(*i).copied().unwrap_or(false)).collect();
+    let recs: Vec<(usize, &crate::model::Track)> = st.queue.iter().enumerate().skip(pos).filter(|(i, _)| st.is_radio(*i)).collect();
     section_label(ui, &format!("Automatically Recommended ({})", recs.len()));
     egui::ScrollArea::vertical().id_salt("rp_radio").auto_shrink([false, false]).max_height(ui.available_height() - 40.0).show(ui, |ui| {
         for (i, t) in &recs {

@@ -647,7 +647,7 @@ pub fn queue_page(app: &mut AquaApp, ui: &mut Ui) {
         for i in range {
             let t = &st.queue[i];
             let cur = pos == Some(i);
-            let radio = st.queue_radio.get(i).copied().unwrap_or(false);
+            let radio = st.is_radio(i);
             let r = ui.horizontal(|ui| {
                 ui.add_sized([34.0, 24.0], egui::Label::new(RichText::new(if cur { icon::NOW().to_string() } else { (i + 1).to_string() }).color(ui.visuals().weak_text_color())));
                 widgets::provider_badge(ui, t.provider);

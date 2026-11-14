@@ -10,7 +10,7 @@
 use super::output::Output;
 use crate::config::{ProviderKind, Quality, RepeatMode, YtOpen};
 pub use aqua_core::playback::{PlayRecord, PlayerState, PlaybackControl, SpotifyStatus};
-pub use aqua_core::queue::Queue;
+pub use aqua_core::queue::{EntryOrigin, Queue};
 use crate::model::Track;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex, RwLock};
@@ -37,7 +37,8 @@ impl Default for EngineOpts {
 
 pub enum Cmd {
     Play { tracks: Vec<Track>, start: usize },
-    Restore { tracks: Vec<Track>, start: usize, position_ms: u64 },
+    /// Restore a saved session (entries in play order, with their origin).
+    Restore { entries: Vec<(Track, EntryOrigin)>, start: usize, position_ms: u64 },
     /// Manual "Add to queue" (takes priority over radio recommendations).
     Enqueue(Vec<Track>),
     /// Similarity Radio recommendations (appended after everything else).
@@ -301,7 +302,7 @@ impl Worker {
             s.current = self.q.current().cloned();
             s.queue = self.q.in_order();
             s.queue_pos = self.q.pos;
-            s.queue_radio = self.q.radio_flags_in_order();
+            s.queue_origin = self.q.origins_in_order();
             s.radio_upcoming = self.q.radio_upcoming();
             let key = s.current.as_ref().map(|t| t.key());
             if key != self.last_current.as_ref().map(|t| t.key()) {
@@ -633,8 +634,8 @@ impl Worker {
                 self.pending_restore_ms = None;
                 self.start_current(0, true);
             }
-            Cmd::Restore { tracks, start, position_ms } => {
-                self.q.set(tracks, start);
+            Cmd::Restore { entries, start, position_ms } => {
+                self.q = Queue::from_entries(entries, Some(start), self.q.shuffle, self.q.repeat);
                 self.pending_restore_ms = Some(position_ms);
                 self.playing = false;
                 self.reset_clock(position_ms);
