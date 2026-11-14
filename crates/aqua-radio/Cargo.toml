@@ -1,0 +1,15 @@
+[package]
+name = "aqua-radio"
+description = "Aqua Glass Similarity Radio: recommendation gathering, ranking, resolving and queue refill"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+aqua-core = { path = "../aqua-core" }
+aqua-providers = { path = "../aqua-providers" }
+serde = { workspace = true }
+anyhow = { workspace = true }
+log = { workspace = true }
+rand = { workspace = true }

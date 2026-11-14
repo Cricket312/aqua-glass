@@ -12,9 +12,9 @@
 
 use super::oauth::{self, OAuthSpec, Token};
 use super::{request_json, ApiError};
-use crate::config::ProviderKind;
-use crate::model::*;
-use crate::security;
+use aqua_core::model::ProviderKind;
+use aqua_core::model::*;
+use aqua_core::secrets as security;
 use serde_json::{json, Value};
 use std::sync::Mutex;
 
@@ -69,7 +69,7 @@ impl Auth {
         }
     }
     fn login(&self) -> anyhow::Result<()> {
-        let r = oauth::authorize(&self.spec, super::http())?;
+        let r = oauth::authorize(&self.spec, crate::http())?;
         let t = Token::from_response(r, None);
         if let Some(rt) = &t.refresh {
             security::set(self.key, rt)?;
@@ -83,7 +83,7 @@ impl Auth {
         Ok(true)
     }
     fn refresh_with(&self, rt: &str) -> anyhow::Result<()> {
-        let r = oauth::refresh(&self.spec, super::http(), rt)?;
+        let r = oauth::refresh(&self.spec, crate::http(), rt)?;
         let t = Token::from_response(r, Some(rt.to_string()));
         if let Some(new_rt) = &t.refresh {
             if new_rt != rt {

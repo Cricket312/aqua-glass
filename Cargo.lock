@@ -218,10 +218,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
-name = "aqua-glass"
-version = "0.3.2"
+name = "aqua-core"
+version = "0.4.0"
 dependencies = [
  "anyhow",
+ "log",
+ "rand 0.9.5",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "aqua-glass"
+version = "0.4.0"
+dependencies = [
+ "anyhow",
+ "aqua-core",
+ "aqua-providers",
+ "aqua-radio",
  "base64 0.22.1",
  "cpal",
  "csv",
@@ -257,6 +271,35 @@ dependencies = [
  "url",
  "windows 0.62.2",
  "winreg",
+]
+
+[[package]]
+name = "aqua-providers"
+version = "0.4.0"
+dependencies = [
+ "anyhow",
+ "aqua-core",
+ "base64 0.22.1",
+ "log",
+ "rand 0.9.5",
+ "reqwest 0.13.5",
+ "rustls 0.23.46",
+ "serde",
+ "serde_json",
+ "sha2",
+ "url",
+]
+
+[[package]]
+name = "aqua-radio"
+version = "0.4.0"
+dependencies = [
+ "anyhow",
+ "aqua-core",
+ "aqua-providers",
+ "log",
+ "rand 0.9.5",
+ "serde",
 ]
 
 [[package]]

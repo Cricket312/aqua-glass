@@ -1,51 +1,46 @@
 //! Small shared helpers: data directories, time formatting, logging.
 
 use std::path::PathBuf;
-use std::sync::OnceLock;
 
-static DIRS: OnceLock<PathBuf> = OnceLock::new();
+pub use aqua_core::storage::{atomic_write, ensure_dir, now_unix};
 
 /// Root data directory (`%APPDATA%\AquaGlass` on Windows).
 /// `AQUA_GLASS_HOME` overrides it (used by tests and portable mode).
+/// The choice is handed to `aqua_core::storage` so portable code uses the same place.
 pub fn data_dir() -> PathBuf {
-    DIRS.get_or_init(|| {
-        if let Ok(p) = std::env::var("AQUA_GLASS_HOME") {
-            return PathBuf::from(p);
-        }
-        if cfg!(test) {
-            return std::env::temp_dir().join(format!("aqua-glass-test-{}", std::process::id()));
-        }
-        // Portable mode: a `portable.txt` next to the exe keeps data beside it.
-        if let Ok(exe) = std::env::current_exe() {
-            if let Some(dir) = exe.parent() {
-                if dir.join("portable.txt").exists() {
-                    return dir.join("data");
-                }
-            }
-        }
-        directories::ProjectDirs::from("", "", "AquaGlass")
-            .map(|d| d.config_dir().to_path_buf())
-            .unwrap_or_else(|| PathBuf::from("aqua-glass-data"))
-    })
-    .clone()
+    aqua_core::storage::data_dir_or(desktop_data_dir)
 }
 
-pub fn ensure_dir(p: &std::path::Path) -> std::io::Result<()> {
-    std::fs::create_dir_all(p)
+fn desktop_data_dir() -> PathBuf {
+    if let Ok(p) = std::env::var("AQUA_GLASS_HOME") {
+        return PathBuf::from(p);
+    }
+    if cfg!(test) {
+        return std::env::temp_dir().join(format!("aqua-glass-test-{}", std::process::id()));
+    }
+    // Portable mode: a `portable.txt` next to the exe keeps data beside it.
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            if dir.join("portable.txt").exists() {
+                return dir.join("data");
+            }
+        }
+    }
+    directories::ProjectDirs::from("", "", "AquaGlass")
+        .map(|d| d.config_dir().to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("aqua-glass-data"))
 }
 
 pub fn cache_dir() -> PathBuf {
     data_dir().join("cache")
 }
 
-/// Write a file atomically (write temp + rename) so a crash never leaves a half-written config.
-pub fn atomic_write(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
-    if let Some(parent) = path.parent() {
-        ensure_dir(parent)?;
-    }
-    let tmp = path.with_extension("tmp");
-    std::fs::write(&tmp, bytes)?;
-    std::fs::rename(&tmp, path)
+/// Connect the portable crates to this desktop platform: data directory,
+/// secret store (Windows Credential Manager) and browser launcher. Idempotent.
+pub fn init_platform() {
+    let _ = data_dir();
+    crate::security::install_platform_store();
+    aqua_core::platform::install_url_opener(|u| open::that_detached(u).map_err(|e| e.to_string()));
 }
 
 pub fn fmt_ms(ms: u64) -> String {
@@ -55,13 +50,6 @@ pub fn fmt_ms(ms: u64) -> String {
     } else {
         format!("{}:{:02}", s / 60, s % 60)
     }
-}
-
-pub fn now_unix() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
 }
 
 pub fn fmt_unix(ts: i64) -> String {

@@ -66,7 +66,14 @@ fn radio_starts_fills_refills_and_respects_manual_queue() {
     let spotify = Arc::new(aqua_glass::services::spotify::SpotifyApi::new("", 8898));
     let youtube = Arc::new(aqua_glass::services::youtube::YouTubeApi::new(""));
     let radio = Radio::start(
-        Deps { engine: engine.clone(), spotify, youtube, library, history, wake: Arc::new(|| {}) },
+        Deps {
+            engine: Arc::new(engine.clone()),
+            spotify,
+            youtube,
+            local_tracks: Arc::new(move || library.lock().unwrap().tracks(ProviderKind::Local, LOCAL_ALL_ID).cloned().unwrap_or_default()),
+            history,
+            wake: Arc::new(|| {}),
+        },
         Prefs { target: 15, threshold: 5, ..Prefs::default() },
     );
 

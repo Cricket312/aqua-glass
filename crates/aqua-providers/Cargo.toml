@@ -1,0 +1,20 @@
+[package]
+name = "aqua-providers"
+description = "Aqua Glass music providers: Spotify Web API, YouTube Data API, Last.fm, LRCLIB, OAuth, rate limiting"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+aqua-core = { path = "../aqua-core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+log = { workspace = true }
+rand = { workspace = true }
+reqwest = { workspace = true }
+rustls = { workspace = true }
+url = { workspace = true }
+sha2 = { workspace = true }
+base64 = { workspace = true }

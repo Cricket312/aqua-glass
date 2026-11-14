@@ -22,6 +22,7 @@ pub mod winint;
 
 /// Start the application.
 pub fn run() -> eframe::Result<()> {
+    util::init_platform();
     let args: Vec<String> = std::env::args().collect();
     if let Some(i) = args.iter().position(|a| a == "--radio-selftest") {
         std::process::exit(radio_selftest_cli(args.get(i + 1).map(|s| s.as_str()), args.get(i + 2).map(|s| s.as_str())));

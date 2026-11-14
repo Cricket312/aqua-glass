@@ -4,44 +4,12 @@
 //! (see `security`). Exported settings therefore never contain credentials.
 
 use crate::features::{self, Preset};
+pub use aqua_core::model::{ProviderKind, RepeatMode, YtOpen};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 pub const CONFIG_VERSION: u32 = 2;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default, Hash, PartialOrd, Ord)]
-pub enum ProviderKind {
-    #[default]
-    Spotify,
-    YouTube,
-    Local,
-}
-
-impl ProviderKind {
-    pub fn label(self) -> &'static str {
-        match self {
-            ProviderKind::Spotify => "Spotify",
-            ProviderKind::YouTube => "YouTube Music",
-            ProviderKind::Local => "Local Files",
-        }
-    }
-    pub fn short(self) -> &'static str {
-        match self {
-            ProviderKind::Spotify => "SP",
-            ProviderKind::YouTube => "YT",
-            ProviderKind::Local => "LO",
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub enum RepeatMode {
-    #[default]
-    Off,
-    All,
-    One,
-}
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
@@ -349,12 +317,6 @@ impl Default for ServicesCfg {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub enum YtOpen {
-    #[default]
-    YouTubeMusic,
-    YouTube,
-}
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default)]

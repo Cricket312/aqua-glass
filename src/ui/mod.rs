@@ -985,10 +985,13 @@ impl AquaApp {
                 let ctx2 = ctx.clone();
                 self.radio = Some(crate::radio::Radio::start(
                     crate::radio::Deps {
-                        engine: self.engine.clone(),
+                        engine: Arc::new(self.engine.clone()),
                         spotify: self.spotify.clone(),
                         youtube: self.youtube.clone(),
-                        library: self.library.clone(),
+                        local_tracks: {
+                            let lib = self.library.clone();
+                            Arc::new(move || lib.lock().unwrap().tracks(crate::config::ProviderKind::Local, crate::library::LOCAL_ALL_ID).cloned().unwrap_or_default())
+                        },
                         history: self.history.clone(),
                         wake: Arc::new(move || ctx2.request_repaint()),
                     },

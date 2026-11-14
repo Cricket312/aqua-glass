@@ -13,9 +13,9 @@
 
 use super::oauth::{self, OAuthSpec, Token};
 use super::{request_json, ApiError};
-use crate::config::ProviderKind;
-use crate::model::*;
-use crate::security;
+use aqua_core::model::ProviderKind;
+use aqua_core::model::*;
+use aqua_core::secrets as security;
 use serde_json::{json, Value};
 use std::sync::Mutex;
 
@@ -58,7 +58,7 @@ impl YouTubeApi {
         if !self.configured() {
             anyhow::bail!("Enter your Google OAuth client id first (Settings › Music Services › YouTube Music).");
         }
-        let r = oauth::authorize(&self.spec, super::http())?;
+        let r = oauth::authorize(&self.spec, crate::http())?;
         let t = Token::from_response(r, None);
         if let Some(rt) = &t.refresh {
             security::set(security::keys::YOUTUBE_REFRESH, rt)?;
@@ -72,7 +72,7 @@ impl YouTubeApi {
             return Ok(false);
         }
         let Some(rt) = security::get(security::keys::YOUTUBE_REFRESH) else { return Ok(false) };
-        let r = oauth::refresh(&self.spec, super::http(), &rt)?;
+        let r = oauth::refresh(&self.spec, crate::http(), &rt)?;
         *self.token.lock().unwrap() = Some(Token::from_response(r, Some(rt)));
         Ok(true)
     }
@@ -85,7 +85,7 @@ impl YouTubeApi {
     pub fn logout(&self) {
         let rt = security::get(security::keys::YOUTUBE_REFRESH);
         if let Some(rt) = rt {
-            let _ = super::http().post("https://oauth2.googleapis.com/revoke").form(&[("token", rt)]).send();
+            let _ = crate::http().post("https://oauth2.googleapis.com/revoke").form(&[("token", rt)]).send();
         }
         *self.token.lock().unwrap() = None;
         security::delete(security::keys::YOUTUBE_REFRESH);
@@ -103,7 +103,7 @@ impl YouTubeApi {
             return Ok(a);
         }
         let rt = rt.ok_or(ApiError::Unauthorized)?;
-        let r = oauth::refresh(&self.spec, super::http(), &rt).map_err(|_| ApiError::Unauthorized)?;
+        let r = oauth::refresh(&self.spec, crate::http(), &rt).map_err(|_| ApiError::Unauthorized)?;
         let t = Token::from_response(r, Some(rt));
         let a = t.access.clone();
         *self.token.lock().unwrap() = Some(t);

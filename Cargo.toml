@@ -1,10 +1,33 @@
-[package]
-name = "aqua-glass"
-version = "0.3.2"
+[workspace]
+members = ["crates/aqua-core", "crates/aqua-providers", "crates/aqua-radio"]
+resolver = "2"
+
+[workspace.package]
+version = "0.4.0"
 edition = "2021"
 rust-version = "1.85"
-description = "Aqua Glass - a lightweight native Spotify + YouTube Music client for Windows 11"
 license = "MIT"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+log = "0.4"
+rand = "0.9"
+url = "2"
+sha2 = "0.10"
+base64 = "0.22"
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "json", "query", "form", "charset", "blocking"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+
+# The desktop app (Windows 11) is the root package; portable code lives in crates/.
+[package]
+name = "aqua-glass"
+description = "Aqua Glass - a lightweight native Spotify + YouTube Music client for Windows 11"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
 
 [features]
 default = ["spotify-playback", "discord", "local-files"]
@@ -18,6 +41,9 @@ local-files = ["dep:symphonia"]
 accessibility = ["eframe/accesskit"]
 
 [dependencies]
+aqua-core = { path = "crates/aqua-core" }
+aqua-providers = { path = "crates/aqua-providers" }
+aqua-radio = { path = "crates/aqua-radio" }
 eframe = { version = "0.37", default-features = false, features = ["glow", "default_fonts", "clipboard"] }
 egui = { version = "0.37", default-features = false, features = ["monochrome_emoji_fonts"] }
 serde = { version = "1", features = ["derive"] }

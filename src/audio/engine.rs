@@ -9,262 +9,13 @@
 
 use super::output::Output;
 use crate::config::{ProviderKind, Quality, RepeatMode, YtOpen};
+pub use aqua_core::playback::{PlayRecord, PlayerState, PlaybackControl, SpotifyStatus};
+pub use aqua_core::queue::Queue;
 use crate::model::Track;
-use rand::seq::SliceRandom;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
-// ---------------------------------------------------------------------------
-// Queue (pure logic, unit tested)
-
-#[derive(Clone, Debug, Default)]
-pub struct Queue {
-    pub tracks: Vec<Track>,
-    /// Play order: indices into `tracks`.
-    pub order: Vec<usize>,
-    /// Position in `order` of the current track.
-    pub pos: Option<usize>,
-    pub shuffle: bool,
-    pub repeat: RepeatMode,
-    /// Parallel to `tracks`: true for Similarity Radio recommendations.
-    pub radio: Vec<bool>,
-}
-
-impl Queue {
-    pub fn set(&mut self, tracks: Vec<Track>, start: usize) {
-        self.radio = vec![false; tracks.len()];
-        self.tracks = tracks;
-        self.order = (0..self.tracks.len()).collect();
-        self.pos = if self.tracks.is_empty() { None } else { Some(start.min(self.tracks.len() - 1)) };
-        if self.shuffle {
-            self.reshuffle();
-        }
-    }
-
-    pub fn current(&self) -> Option<&Track> {
-        self.pos.and_then(|p| self.order.get(p)).and_then(|i| self.tracks.get(*i))
-    }
-
-    /// Order-position of the track that follows the current one.
-    /// `auto` = natural end of track (honours repeat-one).
-    pub fn next_pos(&self, auto: bool) -> Option<usize> {
-        self.next_pos_from(self.pos?, auto)
-    }
-
-    /// Order-position following `p`.
-    pub fn next_pos_from(&self, p: usize, auto: bool) -> Option<usize> {
-        if auto && self.repeat == RepeatMode::One {
-            return Some(p);
-        }
-        if p + 1 < self.order.len() {
-            Some(p + 1)
-        } else if self.repeat != RepeatMode::Off && !self.order.is_empty() {
-            Some(0)
-        } else {
-            None
-        }
-    }
-
-    pub fn peek_next(&self, auto: bool) -> Option<&Track> {
-        self.next_pos(auto).and_then(|p| self.tracks.get(self.order[p]))
-    }
-
-    pub fn advance(&mut self, auto: bool) -> Option<&Track> {
-        let n = self.next_pos(auto)?;
-        self.pos = Some(n);
-        self.current()
-    }
-
-    pub fn back(&mut self) -> Option<&Track> {
-        let p = self.pos?;
-        if p > 0 {
-            self.pos = Some(p - 1);
-        } else if self.repeat == RepeatMode::All && !self.order.is_empty() {
-            self.pos = Some(self.order.len() - 1);
-        }
-        self.current()
-    }
-
-    fn reshuffle(&mut self) {
-        let mut rng = rand::rng();
-        match self.pos {
-            Some(p) => {
-                let cur = self.order[p];
-                let mut rest: Vec<usize> = (0..self.tracks.len()).filter(|i| *i != cur).collect();
-                rest.shuffle(&mut rng);
-                self.order = std::iter::once(cur).chain(rest).collect();
-                self.pos = Some(0);
-            }
-            None => {
-                self.order = (0..self.tracks.len()).collect();
-                self.order.shuffle(&mut rng);
-            }
-        }
-    }
-
-    pub fn set_shuffle(&mut self, on: bool) {
-        if on == self.shuffle {
-            return;
-        }
-        self.shuffle = on;
-        if on {
-            self.reshuffle();
-        } else {
-            let cur = self.pos.map(|p| self.order[p]);
-            self.order = (0..self.tracks.len()).collect();
-            self.pos = cur;
-        }
-    }
-
-    pub fn append(&mut self, tracks: Vec<Track>) {
-        for t in tracks {
-            self.tracks.push(t);
-            self.radio.push(false);
-            self.order.push(self.tracks.len() - 1);
-        }
-        if self.pos.is_none() && !self.order.is_empty() {
-            self.pos = Some(0);
-        }
-    }
-
-    pub fn insert_next(&mut self, tracks: Vec<Track>) {
-        let at = self.pos.map(|p| p + 1).unwrap_or(0);
-        for (k, t) in tracks.into_iter().enumerate() {
-            self.tracks.push(t);
-            self.radio.push(false);
-            self.order.insert(at + k, self.tracks.len() - 1);
-        }
-        if self.pos.is_none() && !self.order.is_empty() {
-            self.pos = Some(0);
-        }
-    }
-
-    /// Remove by order-position. Returns true if the current track was removed.
-    pub fn remove(&mut self, opos: usize) -> bool {
-        if opos >= self.order.len() {
-            return false;
-        }
-        let idx = self.order.remove(opos);
-        self.tracks.remove(idx);
-        if idx < self.radio.len() {
-            self.radio.remove(idx);
-        }
-        for o in self.order.iter_mut() {
-            if *o > idx {
-                *o -= 1;
-            }
-        }
-        match self.pos {
-            Some(p) if p == opos => {
-                if self.order.is_empty() {
-                    self.pos = None;
-                } else {
-                    self.pos = Some(p.min(self.order.len() - 1));
-                }
-                true
-            }
-            Some(p) if p > opos => {
-                self.pos = Some(p - 1);
-                false
-            }
-            _ => false,
-        }
-    }
-
-    pub fn move_item(&mut self, from: usize, to: usize) {
-        if from >= self.order.len() || to >= self.order.len() || from == to {
-            return;
-        }
-        let v = self.order.remove(from);
-        self.order.insert(to, v);
-        if let Some(p) = self.pos {
-            self.pos = Some(if p == from {
-                to
-            } else if from < p && to >= p {
-                p - 1
-            } else if from > p && to <= p {
-                p + 1
-            } else {
-                p
-            });
-        }
-    }
-
-    pub fn clear_upcoming(&mut self) {
-        if let Some(p) = self.pos {
-            let keep = self.order[p];
-            let t = self.tracks[keep].clone();
-            let r = self.radio.get(keep).copied().unwrap_or(false);
-            self.tracks = vec![t];
-            self.radio = vec![r];
-            self.order = vec![0];
-            self.pos = Some(0);
-        } else {
-            self.tracks.clear();
-            self.radio.clear();
-            self.order.clear();
-        }
-    }
-
-    fn is_radio_at(&self, opos: usize) -> bool {
-        self.order.get(opos).and_then(|i| self.radio.get(*i)).copied().unwrap_or(false)
-    }
-
-    /// "Add to queue": manual tracks go after the current track and other manual
-    /// items but always *before* generated radio recommendations.
-    pub fn insert_manual(&mut self, tracks: Vec<Track>) {
-        let start = self.pos.map(|p| p + 1).unwrap_or(0);
-        let mut at = (start..self.order.len()).find(|o| self.is_radio_at(*o)).unwrap_or(self.order.len());
-        for t in tracks {
-            self.tracks.push(t);
-            self.radio.push(false);
-            self.order.insert(at, self.tracks.len() - 1);
-            at += 1;
-        }
-        if self.pos.is_none() && !self.order.is_empty() {
-            self.pos = Some(0);
-        }
-    }
-
-    /// Append Similarity Radio recommendations at the very end.
-    pub fn append_radio(&mut self, tracks: Vec<Track>) {
-        for t in tracks {
-            self.tracks.push(t);
-            self.radio.push(true);
-            self.order.push(self.tracks.len() - 1);
-        }
-        if self.pos.is_none() && !self.order.is_empty() {
-            self.pos = Some(0);
-        }
-    }
-
-    /// Number of radio recommendations still to come.
-    pub fn radio_upcoming(&self) -> usize {
-        let start = self.pos.map(|p| p + 1).unwrap_or(0);
-        (start..self.order.len()).filter(|o| self.is_radio_at(*o)).count()
-    }
-
-    /// Remove radio recommendations that haven't played yet.
-    pub fn clear_radio_upcoming(&mut self) {
-        let start = self.pos.map(|p| p + 1).unwrap_or(0);
-        let mut o = self.order.len();
-        while o > start {
-            o -= 1;
-            if self.is_radio_at(o) {
-                self.remove(o);
-            }
-        }
-    }
-
-    pub fn radio_flags_in_order(&self) -> Vec<bool> {
-        (0..self.order.len()).map(|o| self.is_radio_at(o)).collect()
-    }
-
-    pub fn in_order(&self) -> Vec<Track> {
-        self.order.iter().map(|i| self.tracks[*i].clone()).collect()
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Commands / events / state
@@ -328,54 +79,10 @@ pub enum EngineEvent {
     SpotifyConnected(Result<(), String>),
 }
 
-#[derive(Clone, Debug, PartialEq, Default)]
-pub enum SpotifyStatus {
-    #[default]
-    Disconnected,
-    Connecting,
-    Ready,
-    Unavailable(String),
-}
 
-#[derive(Clone, Debug, Default)]
-pub struct PlayerState {
-    pub current: Option<Track>,
-    pub playing: bool,
-    pub duration_ms: u64,
-    pub queue: Vec<Track>,
-    pub queue_pos: Option<usize>,
-    pub shuffle: bool,
-    pub repeat: RepeatMode,
-    pub volume: f32,
-    pub muted: bool,
-    /// The current track is playing outside Aqua Glass (YouTube in the browser).
-    pub external: bool,
-    pub message: Option<String>,
-    pub error: Option<String>,
-    pub spotify: SpotifyStatus,
-    /// Parallel to `queue`: which entries are radio recommendations.
-    pub queue_radio: Vec<bool>,
-    /// Radio recommendations still to play.
-    pub radio_upcoming: usize,
-    /// The most recently finished/left track (for history, skips and radio learning).
-    pub last_played: Option<PlayRecord>,
-    /// Incremented on every change (for cheap change detection).
-    pub version: u64,
-}
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct PlayRecord {
-    pub track: Track,
-    pub listened_ms: u64,
-    /// Played to the end (or at least half of it).
-    pub completed: bool,
-    /// Left early by the user (Next / jump) before half of the track.
-    pub skipped: bool,
-    /// Sequence number so listeners can tell records apart.
-    pub seq: u64,
-}
 
-pub type Listener = Box<dyn FnMut(&PlayerState) + Send>;
+pub type Listener = aqua_core::playback::StateListener;
 pub type TokenSource = Arc<dyn Fn() -> Result<String, String> + Send + Sync>;
 
 /// Position bookkeeping shared with the UI (lock-free reads).
@@ -455,6 +162,74 @@ impl Engine {
 
     pub fn add_listener(&self, l: Listener) {
         self.listeners.lock().unwrap().push(l);
+    }
+}
+
+/// The desktop engine is this platform's implementation of the portable
+/// playback interface (used by Similarity Radio; future sync/handoff).
+impl PlaybackControl for Engine {
+    fn play(&self, tracks: Vec<Track>, start: usize) {
+        self.send(Cmd::Play { tracks, start })
+    }
+    fn pause(&self) {
+        self.send(Cmd::Pause)
+    }
+    fn resume(&self) {
+        self.send(Cmd::Resume)
+    }
+    fn toggle(&self) {
+        self.send(Cmd::Toggle)
+    }
+    fn next(&self) {
+        self.send(Cmd::Next)
+    }
+    fn previous(&self) {
+        self.send(Cmd::Prev)
+    }
+    fn seek(&self, position_ms: u64) {
+        self.send(Cmd::Seek(position_ms))
+    }
+    fn set_volume(&self, volume: f32) {
+        self.send(Cmd::SetVolume(volume))
+    }
+    fn enqueue(&self, tracks: Vec<Track>) {
+        self.send(Cmd::Enqueue(tracks))
+    }
+    fn play_next(&self, tracks: Vec<Track>) {
+        self.send(Cmd::PlayNext(tracks))
+    }
+    fn append_radio(&self, tracks: Vec<Track>) {
+        self.send(Cmd::RadioAppend(tracks))
+    }
+    fn clear_radio_upcoming(&self) {
+        self.send(Cmd::RadioClearUpcoming)
+    }
+    fn jump_to(&self, order_pos: usize) {
+        self.send(Cmd::JumpTo(order_pos))
+    }
+    fn remove(&self, order_pos: usize) {
+        self.send(Cmd::Remove(order_pos))
+    }
+    fn move_item(&self, from: usize, to: usize) {
+        self.send(Cmd::Move(from, to))
+    }
+    fn clear_queue(&self) {
+        self.send(Cmd::ClearQueue)
+    }
+    fn set_shuffle(&self, on: bool) {
+        self.send(Cmd::SetShuffle(on))
+    }
+    fn set_repeat(&self, mode: RepeatMode) {
+        self.send(Cmd::SetRepeat(mode))
+    }
+    fn snapshot(&self) -> PlayerState {
+        Engine::snapshot(self)
+    }
+    fn position_ms(&self) -> u64 {
+        Engine::position_ms(self)
+    }
+    fn add_listener(&self, listener: aqua_core::playback::StateListener) {
+        Engine::add_listener(self, listener)
     }
 }
 
@@ -1098,109 +873,3 @@ pub fn wait_until(timeout: Duration, mut f: impl FnMut() -> bool) -> bool {
     false
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn t(n: &str) -> Track {
-        Track { id: n.into(), title: n.into(), provider: ProviderKind::Local, ..Default::default() }
-    }
-
-    fn titles(q: &Queue) -> Vec<String> {
-        q.in_order().into_iter().map(|t| t.title).collect()
-    }
-
-    #[test]
-    fn advance_and_repeat() {
-        let mut q = Queue::default();
-        q.set(vec![t("a"), t("b"), t("c")], 1);
-        assert_eq!(q.current().unwrap().title, "b");
-        assert_eq!(q.advance(true).unwrap().title, "c");
-        assert!(q.advance(true).is_none());
-        q.repeat = RepeatMode::All;
-        assert_eq!(q.advance(true).unwrap().title, "a");
-        q.repeat = RepeatMode::One;
-        assert_eq!(q.advance(true).unwrap().title, "a");
-        assert_eq!(q.advance(false).unwrap().title, "b", "manual next ignores repeat-one");
-        assert_eq!(q.back().unwrap().title, "a");
-    }
-
-    #[test]
-    fn shuffle_keeps_current_and_all_tracks() {
-        let mut q = Queue::default();
-        q.set((0..50).map(|i| t(&i.to_string())).collect(), 10);
-        q.set_shuffle(true);
-        assert_eq!(q.current().unwrap().title, "10");
-        assert_eq!(q.pos, Some(0));
-        let mut seen = titles(&q);
-        seen.sort();
-        assert_eq!(seen.len(), 50);
-        seen.dedup();
-        assert_eq!(seen.len(), 50);
-        q.advance(false);
-        let cur = q.current().unwrap().title.clone();
-        q.set_shuffle(false);
-        assert_eq!(q.current().unwrap().title, cur);
-        assert_eq!(titles(&q)[0], "0");
-    }
-
-    #[test]
-    fn insert_remove_move() {
-        let mut q = Queue::default();
-        q.set(vec![t("a"), t("b"), t("c")], 0);
-        q.insert_next(vec![t("x")]);
-        assert_eq!(titles(&q), ["a", "x", "b", "c"]);
-        q.append(vec![t("z")]);
-        assert_eq!(titles(&q), ["a", "x", "b", "c", "z"]);
-        assert!(!q.remove(2));
-        assert_eq!(titles(&q), ["a", "x", "c", "z"]);
-        q.move_item(3, 1);
-        assert_eq!(titles(&q), ["a", "z", "x", "c"]);
-        assert_eq!(q.current().unwrap().title, "a");
-        q.move_item(0, 2);
-        assert_eq!(q.current().unwrap().title, "a");
-        assert_eq!(q.pos, Some(2));
-        assert!(q.remove(2));
-        assert_eq!(q.current().unwrap().title, "c");
-        q.clear_upcoming();
-        assert_eq!(titles(&q), ["c"]);
-    }
-
-    #[test]
-    fn manual_queue_has_priority_over_radio() {
-        let mut q = Queue::default();
-        q.set(vec![t("seed")], 0);
-        q.append_radio(vec![t("r1"), t("r2"), t("r3")]);
-        assert_eq!(q.radio_upcoming(), 3);
-        q.insert_manual(vec![t("m1")]);
-        q.insert_manual(vec![t("m2")]);
-        assert_eq!(titles(&q), ["seed", "m1", "m2", "r1", "r2", "r3"]);
-        // play next still goes right after the current track
-        q.insert_next(vec![t("n")]);
-        assert_eq!(titles(&q), ["seed", "n", "m1", "m2", "r1", "r2", "r3"]);
-        q.advance(false);
-        q.advance(false);
-        q.advance(false);
-        q.advance(false); // now at r1
-        assert_eq!(q.current().unwrap().title, "r1");
-        assert_eq!(q.radio_upcoming(), 2);
-        q.clear_radio_upcoming();
-        assert_eq!(titles(&q), ["seed", "n", "m1", "m2", "r1"], "only unplayed radio items are removed");
-        assert_eq!(q.current().unwrap().title, "r1");
-        q.append_radio(vec![t("r4")]);
-        q.insert_manual(vec![t("m3")]);
-        assert_eq!(titles(&q), ["seed", "n", "m1", "m2", "r1", "m3", "r4"]);
-        assert_eq!(q.radio_flags_in_order(), [false, false, false, false, true, false, true]);
-    }
-
-    #[test]
-    fn large_queue() {
-        let mut q = Queue::default();
-        q.set((0..20_000).map(|i| t(&i.to_string())).collect(), 0);
-        q.set_shuffle(true);
-        for _ in 0..19_999 {
-            assert!(q.advance(true).is_some());
-        }
-        assert!(q.advance(true).is_none());
-    }
-}

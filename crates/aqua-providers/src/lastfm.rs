@@ -85,7 +85,7 @@ impl LastFm {
         if let Some((_, v)) = self.cache.lock().unwrap().iter().find(|(k, _)| *k == ck) {
             return Ok(v.clone());
         }
-        let resp = super::http().get(url.as_str()).send().map_err(|e| {
+        let resp = crate::http().get(url.as_str()).send().map_err(|e| {
             if e.is_connect() || e.is_timeout() {
                 anyhow::anyhow!("couldn't reach Last.fm (network)")
             } else {

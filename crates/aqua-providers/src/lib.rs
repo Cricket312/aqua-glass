@@ -1,7 +1,14 @@
-//! Music service integrations.
+//! Music service integrations (portable: plain Rust + rustls, no OS APIs).
+//!
+//! Platform-specific pieces are injected through `aqua_core`: secret storage
+//! (`aqua_core::secrets::install`) and opening the browser for OAuth
+//! (`aqua_core::platform::install_url_opener`). The OAuth flow uses a loopback
+//! redirect (`http://127.0.0.1:<port>/login`), which works on Windows; an
+//! Android client would use an app-link/custom-scheme redirect instead (see
+//! docs/future-mobile-architecture.md).
 //!
 //! * `spotify` — Spotify Web API (library, search, playlists) + OAuth PKCE.
-//!   Audio playback is in `audio::spotify` (librespot, Premium only).
+//!   Audio playback is platform code (desktop: `audio::spotify`, librespot).
 //! * `youtube` — YouTube Data API v3 (account playlists, liked music, search,
 //!   playlist creation). Playback stays on YouTube/YouTube Music itself,
 //!   because Google does not offer a third-party audio playback API.
@@ -74,7 +81,7 @@ pub fn error_message(body: &str) -> String {
         .or_else(|| v["error"].as_str())
         .unwrap_or("");
     let m = if m.is_empty() { body.chars().take(200).collect::<String>() } else { m.to_string() };
-    crate::security::scrub(&m)
+    aqua_core::secrets::scrub(&m)
 }
 
 pub fn classify(status: u16, retry_after: Option<u64>, body: &str) -> ApiError {
@@ -128,7 +135,7 @@ pub fn request_json(
         } else if method == reqwest::Method::POST || method == reqwest::Method::PUT || method == reqwest::Method::DELETE {
             rb = rb.header("Content-Length", "0");
         }
-        let resp = rb.send().map_err(|e| ApiError::Network(crate::security::scrub(&e.to_string())))?;
+        let resp = rb.send().map_err(|e| ApiError::Network(aqua_core::secrets::scrub(&e.to_string())))?;
         let status = resp.status().as_u16();
         let retry_after = parse_retry_after(resp.headers().get("retry-after").and_then(|v| v.to_str().ok()));
         let text = resp.text().unwrap_or_default();

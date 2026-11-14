@@ -98,7 +98,7 @@ pub fn authorize(spec: &OAuthSpec, http: &reqwest::blocking::Client) -> anyhow::
             q.append_pair(k, v);
         }
     }
-    open::that_detached(url.as_str()).map_err(|e| anyhow::anyhow!("Could not open the browser: {e}"))?;
+    aqua_core::platform::open_url(url.as_str()).map_err(|e| anyhow::anyhow!("Could not open the browser: {e}"))?;
 
     listener.set_nonblocking(true)?;
     let deadline = Instant::now() + Duration::from_secs(300);
@@ -150,7 +150,7 @@ pub fn authorize(spec: &OAuthSpec, http: &reqwest::blocking::Client) -> anyhow::
     let status = resp.status();
     let text = resp.text()?;
     if !status.is_success() {
-        anyhow::bail!("Token exchange failed ({status}): {}", crate::security::scrub(&text));
+        anyhow::bail!("Token exchange failed ({status}): {}", aqua_core::secrets::scrub(&text));
     }
     Ok(serde_json::from_str(&text)?)
 }

@@ -3,7 +3,7 @@
 //! available to third-party apps, so this is the licensed-for-reuse source used.
 //! Translations are not offered by LRCLIB, so Aqua Glass does not offer them.
 
-use crate::model::Track;
+use aqua_core::model::Track;
 use serde::Deserialize;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -160,7 +160,7 @@ pub fn fetch(track: &Track) -> anyhow::Result<Lyrics> {
 }
 
 fn fetch_inner(track: &Track) -> anyhow::Result<Lyrics> {
-    let http = super::http();
+    let http = crate::http();
     let artist = track.artists.first().cloned().unwrap_or_default();
     if artist.is_empty() {
         anyhow::bail!("this track has no artist tag, so lyrics can't be looked up");
