@@ -99,7 +99,7 @@ impl LastFm {
             match code {
                 10 | 26 => anyhow::bail!("Last.fm API key is invalid or suspended"),
                 29 => anyhow::bail!("Last.fm rate limit — retrying later"),
-                6 => return Ok(serde_json::Value::Null), // not found → empty
+                6 => return Ok(serde_json::Value::Null), // not found › empty
                 _ => anyhow::bail!("Last.fm error {code}: {msg}"),
             }
         }

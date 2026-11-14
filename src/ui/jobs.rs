@@ -93,6 +93,7 @@ fn e2s(e: ApiError) -> String {
 
 /// Full Spotify synchronization (read-only towards Spotify).
 pub fn sync_spotify(api: &spotify::SpotifyApi, store: &Arc<Mutex<LibraryStore>>, include_followed: bool, import_all: bool, h: &JobHandle) -> Result<SyncReport, String> {
+    let _bg = crate::services::ratelimit::background();
     let me = api.me().map_err(e2s)?;
     let mut lists = api.playlists(&me.id).map_err(e2s)?;
     if !include_followed {
@@ -131,6 +132,7 @@ pub fn sync_spotify(api: &spotify::SpotifyApi, store: &Arc<Mutex<LibraryStore>>,
                 }
             }
             Err(e) => {
+                let limited = matches!(e, ApiError::RateLimited(_));
                 let msg = e.to_string();
                 if let Some(p) = s.lib(ProviderKind::Spotify).playlist_mut(id) {
                     p.meta.items_error = msg.clone();
@@ -138,40 +140,82 @@ pub fn sync_spotify(api: &spotify::SpotifyApi, store: &Arc<Mutex<LibraryStore>>,
                     p.meta.snapshot.clear();
                 }
                 rep.errors.push(format!("{id}: {msg}"));
+                if limited {
+                    // make sure the playlists not reached yet are refetched by the next sync
+                    for rid in &refetch[i + 1..] {
+                        if let Some(p) = s.lib(ProviderKind::Spotify).playlist_mut(rid) {
+                            p.meta.snapshot.clear();
+                        }
+                    }
+                    rep.errors.push("Sync paused: Spotify asked Aqua Glass to slow down. Remaining playlists will update on the next sync.".into());
+                    break;
+                }
             }
         }
     }
+    // saved collections: one cheap request each; full download only when changed
+    let unchanged = |which: &str, sig: &Result<(u64, String), ApiError>, has_cache: bool| -> bool {
+        let prev = store.lock().unwrap().lib(ProviderKind::Spotify).signatures.get(which).cloned();
+        has_cache && matches!((sig, prev), (Ok(a), Some(b)) if *a == b)
+    };
+    let remember = |which: &str, sig: Result<(u64, String), ApiError>| {
+        if let Ok(sg) = sig {
+            store.lock().unwrap().lib(ProviderKind::Spotify).signatures.insert(which.to_string(), sg);
+        }
+    };
     if import_liked {
         h.progress(refetch.len(), total);
-        match api.liked_tracks() {
-            Ok(t) => {
-                let mut s = store.lock().unwrap();
-                let n = t.len() as u32;
-                let l = s.lib(ProviderKind::Spotify);
-                if l.playlist(LIKED_ID).is_none() {
-                    l.playlists.insert(0, PlaylistEntry { meta: Playlist { provider: ProviderKind::Spotify, id: LIKED_ID.into(), name: "Liked Songs".into(), is_liked: true, owned_by_user: true, ..Default::default() }, imported: true, ..Default::default() });
+        let sig = api.collection_signature("tracks");
+        let has = store.lock().unwrap().tracks(ProviderKind::Spotify, LIKED_ID).is_some();
+        if unchanged("tracks", &sig, has) {
+            rep.unchanged += 1;
+        } else {
+            match api.liked_tracks() {
+                Ok(t) => {
+                    let mut s = store.lock().unwrap();
+                    let n = t.len() as u32;
+                    let l = s.lib(ProviderKind::Spotify);
+                    if l.playlist(LIKED_ID).is_none() {
+                        l.playlists.insert(0, PlaylistEntry { meta: Playlist { provider: ProviderKind::Spotify, id: LIKED_ID.into(), name: "Liked Songs".into(), is_liked: true, owned_by_user: true, ..Default::default() }, imported: true, ..Default::default() });
+                    }
+                    if let Some(e) = l.playlist_mut(LIKED_ID) {
+                        e.meta.track_count = n;
+                        e.last_synced = crate::util::now_unix();
+                    }
+                    s.store_tracks(ProviderKind::Spotify, LIKED_ID, t);
+                    drop(s);
+                    remember("tracks", sig);
                 }
-                if let Some(e) = l.playlist_mut(LIKED_ID) {
-                    e.meta.track_count = n;
-                    e.last_synced = crate::util::now_unix();
-                }
-                s.store_tracks(ProviderKind::Spotify, LIKED_ID, t);
+                Err(e) => rep.errors.push(format!("Liked Songs: {e}")),
             }
-            Err(e) => rep.errors.push(format!("Liked Songs: {e}")),
         }
     }
     if import_albums {
         h.progress(refetch.len() + 1, total);
-        match api.saved_albums() {
-            Ok(a) => store.lock().unwrap().lib(ProviderKind::Spotify).albums = a,
-            Err(e) => rep.errors.push(format!("Saved albums: {e}")),
+        let sig = api.collection_signature("albums");
+        let has = !store.lock().unwrap().lib(ProviderKind::Spotify).albums.is_empty();
+        if !unchanged("albums", &sig, has) {
+            match api.saved_albums() {
+                Ok(a) => {
+                    store.lock().unwrap().lib(ProviderKind::Spotify).albums = a;
+                    remember("albums", sig);
+                }
+                Err(e) => rep.errors.push(format!("Saved albums: {e}")),
+            }
         }
     }
     if import_artists {
         h.progress(refetch.len() + 2, total);
-        match api.followed_artists() {
-            Ok(a) => store.lock().unwrap().lib(ProviderKind::Spotify).artists = a,
-            Err(e) => rep.errors.push(format!("Followed artists: {e}")),
+        let sig = api.collection_signature("artists");
+        let has = !store.lock().unwrap().lib(ProviderKind::Spotify).artists.is_empty();
+        if !unchanged("artists", &sig, has) {
+            match api.followed_artists() {
+                Ok(a) => {
+                    store.lock().unwrap().lib(ProviderKind::Spotify).artists = a;
+                    remember("artists", sig);
+                }
+                Err(e) => rep.errors.push(format!("Followed artists: {e}")),
+            }
         }
     }
     if let Ok(r) = api.recently_played() {
@@ -186,6 +230,7 @@ pub fn sync_spotify(api: &spotify::SpotifyApi, store: &Arc<Mutex<LibraryStore>>,
 }
 
 pub fn sync_youtube(api: &youtube::YouTubeApi, store: &Arc<Mutex<LibraryStore>>, import_all: bool, h: &JobHandle) -> Result<SyncReport, String> {
+    let _bg = crate::services::ratelimit::background();
     let ch = api.channel().map_err(e2s)?;
     let lists = api.playlists().map_err(e2s)?;
     let import_liked = {

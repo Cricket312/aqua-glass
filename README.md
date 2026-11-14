@@ -82,7 +82,19 @@ cookies are ever entered into Aqua Glass.
   one login covers both the Web API (library) and playback. librespot is unofficial;
   Spotify's developer terms restrict third-party streaming clients, so use it at your
   own discretion. There is no DRM circumvention in Aqua Glass itself.
-* Optional: use your own Spotify Developer app (Settings → Music Services → Advanced).
+* **Rate limiting.** Spotify limits Web API requests *per app*. By default Aqua Glass uses
+  librespot's public app, whose quota is shared with every librespot-based player, so heavy
+  use elsewhere can get it throttled. Aqua Glass:
+  * paces its requests;
+  * pauses all Spotify calls for exactly as long as Spotify asks (`Retry-After`), showing
+    "Spotify paused N s" in the sidebar;
+  * skips unchanged playlists and collections when syncing, and caches lookups.
+
+  If you still see throttling, **use your own Spotify app** (next point): library, search
+  and sync then use your private quota. Playback isn't affected by Web API rate limits.
+* Optional, recommended: use your own Spotify Developer app (Settings › Music Services ›
+  "Use your own Spotify app"). Aqua Glass then signs in twice once: your app for the Web
+  API, librespot's for playback.
   Register `http://127.0.0.1:8898/login` as redirect URI. Since **February 2026** Spotify
   Development-Mode apps need a Premium owner, are limited to 5 users, and have a reduced
   endpoint set (e.g. playlist `tracks` renamed to `items`; some catalog endpoints

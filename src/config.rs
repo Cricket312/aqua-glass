@@ -552,7 +552,7 @@ impl Config {
         self.general.sidebar_width = self.general.sidebar_width.clamp(150.0, 400.0);
         self.mini.opacity = self.mini.opacity.clamp(0.2, 1.0);
         self.overlay.opacity = self.overlay.opacity.clamp(0.1, 1.0);
-        self.sync.interval_min = self.sync.interval_min.clamp(5, 24 * 60);
+        self.sync.interval_min = self.sync.interval_min.clamp(15, 24 * 60);
         self.radio.target = self.radio.target.clamp(5, 50);
         self.radio.threshold = self.radio.threshold.clamp(1, self.radio.target.saturating_sub(1).max(1));
     }

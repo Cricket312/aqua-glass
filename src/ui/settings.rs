@@ -985,20 +985,57 @@ fn services(app: &mut AquaApp, ui: &mut Ui) {
                 app.spotify_login();
             }
         });
-        ui.collapsing("Advanced: custom Spotify client ID", |ui| {
+        // live rate-limit status
+        let rl = crate::services::ratelimit::status("spotify.com");
+        if let Some(left) = rl.cooldown_left {
+            widgets::warn(ui, &format!("Spotify asked Aqua Glass to slow down — requests resume in {} s. Playback is not affected.", left.as_secs().max(1)));
+        } else if rl.total_429 > 0 {
+            widgets::note(ui, &format!("Spotify rate-limited this session {} time(s); Aqua Glass paused as requested each time.", rl.total_429));
+        }
+        if app.spotify.is_signed_in() && !app.spotify.playback_signed_in() {
             ui.horizontal(|ui| {
-                ui.label("Client ID");
-                d |= ui.add(egui::TextEdit::singleline(&mut app.cfg.services.spotify_client_id).hint_text("empty = librespot default").desired_width(280.0)).changed();
+                widgets::warn(ui, "Playback isn't signed in yet (needed once when using your own app).");
+                if ui.button("Sign in for playback").clicked() {
+                    let api = app.spotify.clone();
+                    app.jobs.spawn("Spotify: playback sign-in", move |h| {
+                        let m = match api.login_playback() {
+                            Ok(()) => super::jobs::Msg::Toast("Playback signed in — restart Aqua Glass to connect playback.".into(), false),
+                            Err(e) => super::jobs::Msg::Toast(format!("Playback sign-in failed: {e}"), true),
+                        };
+                        h.send(m);
+                    });
+                }
             });
-            ui.horizontal(|ui| {
-                ui.label("Redirect port");
-                d |= ui.add(egui::DragValue::new(&mut app.cfg.services.spotify_redirect_port).range(1024..=65535)).changed();
+        }
+        let own = !app.cfg.services.spotify_client_id.trim().is_empty();
+        let open = rl.total_429 > 0 || own;
+        egui::CollapsingHeader::new(RichText::new(if own { "Your own Spotify app (in use)" } else { "Use your own Spotify app — recommended if you see rate limiting" }).strong())
+            .default_open(open)
+            .show(ui, |ui| {
+                widgets::note(ui, "Spotify counts Web API requests per app. Without your own app, Aqua Glass uses librespot's public app, whose quota is shared with every librespot-based player — the most common cause of rate limiting. With your own app, library, search and sync use your private quota; Premium playback keeps using librespot.");
+                ui.label(RichText::new("One-time setup (about 3 minutes):").strong());
+                ui.label("1. Open developer.spotify.com/dashboard and sign in (the app owner needs Spotify Premium since Feb 2026).");
+                ui.label(format!("2. Create app › any name › Redirect URI: http://127.0.0.1:{}/login › tick “Web API” › Save.", app.cfg.services.spotify_redirect_port));
+                ui.label("3. Open the app's Settings, copy the Client ID and paste it below.");
+                ui.label("4. Restart Aqua Glass and sign in again (twice in a row: once for your app, once for playback).");
+                ui.horizontal(|ui| {
+                    ui.label("Client ID");
+                    d |= ui.add(egui::TextEdit::singleline(&mut app.cfg.services.spotify_client_id).hint_text("empty = librespot's shared app").desired_width(300.0)).changed();
+                    if ui.small_button("Open dashboard").clicked() {
+                        let _ = open::that_detached("https://developer.spotify.com/dashboard");
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Redirect port");
+                    d |= ui.add(egui::DragValue::new(&mut app.cfg.services.spotify_redirect_port).range(1024..=65535)).changed();
+                });
+                let configured = app.cfg.services.spotify_client_id.trim().to_string();
+                let active_custom = !app.spotify.uses_default_client();
+                if configured.is_empty() == active_custom {
+                    widgets::warn(ui, "Restart Aqua Glass to apply the client ID change, then sign in again.");
+                }
+                widgets::note(ui, "Development-Mode apps allow up to 5 users — plenty for personal use. Nothing about your account changes; you can delete the app any time.");
             });
-            widgets::note(ui, &format!(
-                "By default Aqua Glass signs in with librespot's public client so one login covers library access and Premium playback. With your own app from developer.spotify.com, register the redirect URI http://127.0.0.1:{}/login. Since Feb 2026, Development-Mode apps need a Premium owner, allow 5 users and have fewer endpoints; librespot playback may reject tokens from custom clients. Restart after changing.",
-                app.cfg.services.spotify_redirect_port
-            ));
-        });
         widgets::note(ui, "Playback requires Spotify Premium (enforced by Spotify). Library import, sync, export and transfer work with Free accounts. librespot is an unofficial, open-source client library; Spotify's terms restrict third-party clients — use at your own discretion.");
     }
 
@@ -1095,7 +1132,7 @@ fn library(app: &mut AquaApp, ui: &mut Ui) {
     let mut d = false;
     widgets::section(ui, "Synchronization");
     let mut iv = app.cfg.sync.interval_min;
-    slider_u(ui, "Automatic sync interval (minutes)", &mut iv, 5..=1440, &mut d);
+    slider_u(ui, "Automatic sync interval (minutes)", &mut iv, 15..=1440, &mut d);
     app.cfg.sync.interval_min = iv;
     d |= ui.checkbox(&mut app.cfg.sync.include_followed_playlists, "Include playlists I follow (not only my own)").changed();
     for p in [ProviderKind::Spotify, ProviderKind::YouTube] {

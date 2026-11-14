@@ -151,6 +151,16 @@ fn sidebar(app: &mut AquaApp, ui: &mut Ui, collapsed: bool) {
     ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
         ram_card(app, ui, collapsed);
         ui.add_space(8.0);
+        if let Some(left) = crate::services::ratelimit::status("spotify.com").cooldown_left {
+            let txt = if collapsed { format!("⏸ {}s", left.as_secs().max(1)) } else { format!("⏸ Spotify paused {} s (rate limit)", left.as_secs().max(1)) };
+            let r = ui.add(egui::Label::new(RichText::new(txt).size(11.5).color(widgets::impact_color(crate::features::Impact::High))).sense(egui::Sense::click()));
+            if r.on_hover_text("Spotify asked Aqua Glass to slow down. All Spotify requests wait until the pause ends; playback isn't affected. Click for details.").clicked() {
+                app.settings.category = crate::features::Category::Services;
+                app.navigate(Page::Settings);
+            }
+            ui.ctx().request_repaint_after(std::time::Duration::from_secs(1));
+            ui.add_space(4.0);
+        }
         let jobs: Vec<super::jobs::JobInfo> = app.jobs.active.lock().unwrap().values().cloned().collect();
         if let Some(j) = jobs.first() {
             ui.horizontal(|ui| {

@@ -90,7 +90,7 @@ struct Featured {
 }
 
 /// Hero banner: artwork background darkened by a left-to-right gradient, title,
-/// description, Play pill and pager dots (no auto-rotation → no repaints).
+/// description, Play pill and pager dots (no auto-rotation › no repaints).
 fn featured_banner(app: &mut AquaApp, ui: &mut Ui, items: &[Featured]) {
     let idx = app.featured_idx.min(items.len() - 1);
     let f = &items[idx];

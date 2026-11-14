@@ -10,6 +10,7 @@
 pub mod lastfm;
 pub mod lyrics;
 pub mod oauth;
+pub mod ratelimit;
 pub mod spotify;
 pub mod youtube;
 
@@ -55,7 +56,7 @@ impl std::fmt::Display for ApiError {
             ApiError::Unauthorized => write!(f, "Session expired — please sign in again."),
             ApiError::Forbidden(m) => write!(f, "Not permitted by the service: {m}"),
             ApiError::NotFound => write!(f, "Not found (it may have been deleted or made private)."),
-            ApiError::RateLimited(s) => write!(f, "Rate limited by the service — retry in {s}s."),
+            ApiError::RateLimited(s) => write!(f, "The service asked Aqua Glass to slow down — requests resume in about {}.", if *s >= 120 { format!("{} min", s / 60) } else { format!("{s} s") }),
             ApiError::QuotaExceeded => write!(f, "Daily API quota exhausted — try again tomorrow (YouTube Data API quota resets at midnight Pacific Time)."),
             ApiError::Network(m) => write!(f, "Network problem: {m}"),
             ApiError::Other(c, m) => write!(f, "Service error {c}: {m}"),
@@ -93,34 +94,46 @@ pub fn classify(status: u16, retry_after: Option<u64>, body: &str) -> ApiError {
     }
 }
 
-/// Generic JSON request with rate-limit retry. `auth` returns a fresh bearer token,
-/// `force_refresh` is called once on 401.
+/// Parse `Retry-After` (seconds, or an HTTP date which we treat conservatively as 60 s).
+pub fn parse_retry_after(v: Option<&str>) -> Option<Duration> {
+    let v = v?.trim();
+    match v.parse::<f64>() {
+        Ok(secs) if secs >= 0.0 => Some(Duration::from_secs_f64(secs.min(24.0 * 3600.0))),
+        _ if !v.is_empty() => Some(Duration::from_secs(60)),
+        _ => None,
+    }
+}
+
+/// Generic JSON request through the shared per-service limiter.
+/// `auth` returns a bearer token (`true` = force a refresh after a 401).
 pub fn request_json(
     method: reqwest::Method,
     url: &str,
     body: Option<&serde_json::Value>,
     auth: &dyn Fn(bool) -> Result<String, ApiError>,
 ) -> Result<serde_json::Value, ApiError> {
+    let host = ratelimit::host_of(url);
     let mut refreshed = false;
-    let mut attempts = 0;
+    let mut rate_limited = 0;
+    let mut server_errors = 0;
     loop {
-        attempts += 1;
+        // waits for pacing / an active cooldown; fails fast if the wait is too long
+        if let Err(left) = ratelimit::acquire(&host) {
+            return Err(ApiError::RateLimited(left.as_secs().max(1)));
+        }
         let token = auth(false)?;
         let mut rb = http().request(method.clone(), url).bearer_auth(&token);
         if let Some(b) = body {
             rb = rb.json(b);
-        } else if method == reqwest::Method::POST || method == reqwest::Method::PUT {
+        } else if method == reqwest::Method::POST || method == reqwest::Method::PUT || method == reqwest::Method::DELETE {
             rb = rb.header("Content-Length", "0");
         }
         let resp = rb.send().map_err(|e| ApiError::Network(crate::security::scrub(&e.to_string())))?;
         let status = resp.status().as_u16();
-        let retry_after = resp
-            .headers()
-            .get("retry-after")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.parse::<u64>().ok());
+        let retry_after = parse_retry_after(resp.headers().get("retry-after").and_then(|v| v.to_str().ok()));
         let text = resp.text().unwrap_or_default();
         if (200..300).contains(&status) {
+            ratelimit::on_success(&host);
             if text.trim().is_empty() {
                 return Ok(serde_json::Value::Null);
             }
@@ -132,16 +145,21 @@ pub fn request_json(
                 auth(true)?;
                 continue;
             }
-            429 if attempts <= 3 => {
-                let wait = retry_after.unwrap_or(2).min(30);
-                std::thread::sleep(Duration::from_secs(wait));
+            429 => {
+                // one shared cooldown for every thread; then retry via acquire()
+                let wait = ratelimit::on_429(&host, retry_after);
+                rate_limited += 1;
+                if rate_limited > 4 {
+                    return Err(ApiError::RateLimited(wait.as_secs().max(1)));
+                }
                 continue;
             }
-            500 | 502 | 503 | 504 if attempts <= 2 => {
-                std::thread::sleep(Duration::from_millis(800));
+            500 | 502 | 503 | 504 if server_errors < 2 => {
+                server_errors += 1;
+                std::thread::sleep(Duration::from_millis(800 * server_errors));
                 continue;
             }
-            _ => return Err(classify(status, retry_after, &text)),
+            _ => return Err(classify(status, retry_after.map(|d| d.as_secs()), &text)),
         }
     }
 }

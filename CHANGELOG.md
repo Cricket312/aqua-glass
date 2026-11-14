@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.3.2 — 2026-11-14 (Spotify rate limiting)
+
+### Fixed
+- **One shared limiter per service** (`services/ratelimit.rs`): request pacing (Spotify ≈ 3
+  req/s, small burst) and a single global cooldown. A 429 now pauses *all* Spotify requests
+  for exactly the `Retry-After` time (exponential back-off when absent). Before, each thread
+  retried on its own and long waits were capped at 30 s, which tends to prolong Spotify's
+  throttling.
+- Background work (sync, radio, transfer) yields to interactive actions and waits out
+  cooldowns; interactive actions fail fast with "requests resume in N s" instead of freezing.
+- Fewer requests:
+  - Liked Songs / saved albums / followed artists are re-downloaded only when a
+    1-request check shows a change.
+  - Similarity Radio is limited to 12 Spotify searches per refill, and remembers lookups
+    (hits and misses) across refills.
+  - Identical searches are cached for 5 minutes.
+  - Automatic sync now runs at most every 15 minutes.
+  - A sync that hits a long rate limit pauses and continues next time; transfer matching
+    stops instead of marking every remaining song "unmatched".
+- **Own Spotify app for the Web API**: with your own Client ID, library/search/sync use your
+  app's private quota while Premium playback keeps using librespot (two sign-ins, once). The
+  setup steps are now shown prominently in Settings › Music Services, with live rate-limit
+  status, and the sidebar shows "Spotify paused N s" during a cooldown.
+
 ## 0.3.1 — 2026-11-14
 
 ### Fixed

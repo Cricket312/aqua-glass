@@ -178,7 +178,7 @@ pub fn probe_track(path: &Path) -> Option<Track> {
     }
     t.album_id = format!("local-album:{}", t.album);
     if let Some(bytes) = cover {
-        // embedded cover art → one cached file per album (the artwork loader downsizes it)
+        // embedded cover art › one cached file per album (the artwork loader downsizes it)
         use sha2::Digest;
         let key = if t.album.is_empty() { t.id.clone() } else { format!("{}|{}", t.artists.first().cloned().unwrap_or_default(), t.album) };
         let h = sha2::Sha256::digest(key.as_bytes());

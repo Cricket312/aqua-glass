@@ -1039,7 +1039,11 @@ impl AquaApp {
                         self.toast(format!("Spotify connected: {}{premium_note}", p.display_name), false);
                         self.sp_profile = Some(p);
                         let api = self.spotify.clone();
-                        self.engine.send(Cmd::SpotifyConnect(Arc::new(move || api.access_token(false).map_err(|e| e.to_string()))));
+                        if self.spotify.playback_signed_in() {
+                            self.engine.send(Cmd::SpotifyConnect(Arc::new(move || api.playback_token().map_err(|e| e.to_string()))));
+                        } else {
+                            self.toast("Library connected with your own Spotify app. Sign in once more for Premium playback (Settings › Music Services).", false);
+                        }
                         let first = self.library.lock().unwrap().lib(ProviderKind::Spotify).last_sync == 0;
                         if first {
                             self.sync_now(ProviderKind::Spotify, false);

@@ -200,8 +200,13 @@ pub fn build_plan(
 ) -> Plan {
     let n = tracks.len();
     let mut items = Vec::with_capacity(n);
+    let mut rate_limited = false;
     for (i, t) in tracks.into_iter().enumerate() {
         progress(i, n);
+        if rate_limited {
+            items.push(PlanItem { src: t, candidates: vec![], status: MatchStatus::Unmatched, choice: None, error: Some("not searched: the service asked to slow down — run “Find matches” again later".into()) });
+            continue;
+        }
         if cancel() {
             items.push(PlanItem { src: t, candidates: vec![], status: MatchStatus::Unmatched, choice: None, error: Some("cancelled".into()) });
             continue;
@@ -218,7 +223,10 @@ pub fn build_plan(
                 let choice = if status == MatchStatus::Matched { Some(0) } else { None };
                 items.push(PlanItem { src: t, candidates: cands, status, choice, error: None });
             }
-            Err(e) => items.push(PlanItem { src: t, candidates: vec![], status: MatchStatus::Unmatched, choice: None, error: Some(e) }),
+            Err(e) => {
+                rate_limited = e.contains("slow down");
+                items.push(PlanItem { src: t, candidates: vec![], status: MatchStatus::Unmatched, choice: None, error: Some(e) });
+            }
         }
     }
     progress(n, n);
@@ -410,6 +418,20 @@ mod tests {
         assert_eq!(*added.borrow(), vec!["yt1"]);
         assert!(Path::new(&log.backup_file).exists(), "source backup written");
         assert!(!load_logs().is_empty());
+    }
+
+    #[test]
+    fn plan_stops_searching_when_rate_limited() {
+        let calls = RefCell::new(0);
+        let search = |_: &str| -> Result<Vec<Track>, String> {
+            *calls.borrow_mut() += 1;
+            Err("The service asked Aqua Glass to slow down — requests resume in about 3 min.".into())
+        };
+        let src: Vec<Track> = (0..20).map(|i| Track { title: format!("t{i}"), ..Default::default() }).collect();
+        let plan = build_plan(Playlist::default(), src, ProviderKind::Spotify, &search, &|_, _| {}, &|| false);
+        assert_eq!(*calls.borrow(), 1, "no further searches after a rate limit");
+        assert_eq!(plan.items.len(), 20);
+        assert!(plan.items[5].error.as_deref().unwrap().contains("run “Find matches” again"));
     }
 
     #[test]

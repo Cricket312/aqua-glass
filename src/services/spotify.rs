@@ -44,19 +44,20 @@ pub struct Profile {
     pub product: String,
 }
 
-pub struct SpotifyApi {
+/// One OAuth session (client id + tokens + where its refresh token is stored).
+struct Auth {
     spec: OAuthSpec,
     token: Mutex<Option<Token>>,
+    key: &'static str,
 }
 
-impl SpotifyApi {
-    pub fn new(custom_client_id: &str, port: u16) -> SpotifyApi {
-        let client_id = if custom_client_id.trim().is_empty() { LIBRESPOT_CLIENT_ID.to_string() } else { custom_client_id.trim().to_string() };
-        SpotifyApi {
+impl Auth {
+    fn new(client_id: &str, port: u16, key: &'static str) -> Auth {
+        Auth {
             spec: OAuthSpec {
                 auth_url: "https://accounts.spotify.com/authorize".into(),
                 token_url: "https://accounts.spotify.com/api/token".into(),
-                client_id,
+                client_id: client_id.to_string(),
                 client_secret: None,
                 scopes: SCOPES.iter().map(|s| s.to_string()).collect(),
                 port,
@@ -64,54 +65,42 @@ impl SpotifyApi {
                 extra_auth_params: vec![],
             },
             token: Mutex::new(None),
+            key,
         }
     }
-
-    pub fn uses_default_client(&self) -> bool {
-        self.spec.client_id == LIBRESPOT_CLIENT_ID
-    }
-
-    /// Interactive browser sign-in.
-    pub fn login(&self) -> anyhow::Result<()> {
+    fn login(&self) -> anyhow::Result<()> {
         let r = oauth::authorize(&self.spec, super::http())?;
         let t = Token::from_response(r, None);
         if let Some(rt) = &t.refresh {
-            security::set(security::keys::SPOTIFY_REFRESH, rt)?;
+            security::set(self.key, rt)?;
         }
         *self.token.lock().unwrap() = Some(t);
         Ok(())
     }
-
-    /// Restore a session from the stored refresh token. Returns false if none stored.
-    pub fn restore(&self) -> anyhow::Result<bool> {
-        let Some(rt) = security::get(security::keys::SPOTIFY_REFRESH) else { return Ok(false) };
+    fn restore(&self) -> anyhow::Result<bool> {
+        let Some(rt) = security::get(self.key) else { return Ok(false) };
         self.refresh_with(&rt)?;
         Ok(true)
     }
-
     fn refresh_with(&self, rt: &str) -> anyhow::Result<()> {
         let r = oauth::refresh(&self.spec, super::http(), rt)?;
         let t = Token::from_response(r, Some(rt.to_string()));
         if let Some(new_rt) = &t.refresh {
             if new_rt != rt {
-                security::set(security::keys::SPOTIFY_REFRESH, new_rt)?;
+                security::set(self.key, new_rt)?;
             }
         }
         *self.token.lock().unwrap() = Some(t);
         Ok(())
     }
-
-    pub fn is_signed_in(&self) -> bool {
+    fn signed_in(&self) -> bool {
         self.token.lock().unwrap().is_some()
     }
-
-    pub fn logout(&self) {
+    fn logout(&self) {
         *self.token.lock().unwrap() = None;
-        security::delete(security::keys::SPOTIFY_REFRESH);
+        security::delete(self.key);
     }
-
-    /// Valid access token (refreshing when needed). Also used for librespot.
-    pub fn access_token(&self, force_refresh: bool) -> Result<String, ApiError> {
+    fn access_token(&self, force_refresh: bool) -> Result<String, ApiError> {
         let (cur, rt) = {
             let g = self.token.lock().unwrap();
             match &*g {
@@ -125,6 +114,96 @@ impl SpotifyApi {
         let rt = rt.ok_or(ApiError::Unauthorized)?;
         self.refresh_with(&rt).map_err(|_| ApiError::Unauthorized)?;
         Ok(self.token.lock().unwrap().as_ref().map(|t| t.access.clone()).unwrap_or_default())
+    }
+}
+
+pub struct SpotifyApi {
+    /// Web API session: your own app's client id when configured (own rate-limit
+    /// quota), otherwise librespot's public id (quota shared by all librespot users).
+    web: Auth,
+    /// Separate playback session (librespot's id) — only when a custom id is used.
+    playback: Option<Auth>,
+    /// Recent identical searches (query › results), kept 5 minutes.
+    search_cache: Mutex<Vec<(String, std::time::Instant, SearchResults)>>,
+}
+
+impl SpotifyApi {
+    pub fn new(custom_client_id: &str, port: u16) -> SpotifyApi {
+        let custom = custom_client_id.trim();
+        let (web, playback) = if custom.is_empty() || custom == LIBRESPOT_CLIENT_ID {
+            (Auth::new(LIBRESPOT_CLIENT_ID, port, security::keys::SPOTIFY_REFRESH), None)
+        } else {
+            (Auth::new(custom, port, security::keys::SPOTIFY_WEBAPI_REFRESH), Some(Auth::new(LIBRESPOT_CLIENT_ID, port, security::keys::SPOTIFY_REFRESH)))
+        };
+        SpotifyApi { web, playback, search_cache: Mutex::new(Vec::new()) }
+    }
+
+    pub fn uses_default_client(&self) -> bool {
+        self.playback.is_none()
+    }
+
+    /// Interactive browser sign-in. With a custom client id this signs in twice in a
+    /// row (your app for the Web API, then librespot's for playback); the second
+    /// time Spotify usually just confirms because you're already logged in.
+    pub fn login(&self) -> anyhow::Result<()> {
+        self.web.login()?;
+        if let Some(p) = &self.playback {
+            if let Err(e) = p.login() {
+                log::warn!("Spotify playback sign-in failed: {e}");
+            }
+        }
+        Ok(())
+    }
+
+    /// Restore sessions from stored refresh tokens. Returns false if none stored.
+    pub fn restore(&self) -> anyhow::Result<bool> {
+        let ok = self.web.restore()?;
+        if ok {
+            if let Some(p) = &self.playback {
+                let _ = p.restore();
+            }
+        }
+        Ok(ok)
+    }
+
+    pub fn is_signed_in(&self) -> bool {
+        self.web.signed_in()
+    }
+
+    /// Whether a playback-capable token exists (always true with the default client).
+    pub fn playback_signed_in(&self) -> bool {
+        self.playback.as_ref().map(|p| p.signed_in()).unwrap_or_else(|| self.web.signed_in())
+    }
+
+    /// Sign in only the playback session (when it's missing).
+    pub fn login_playback(&self) -> anyhow::Result<()> {
+        match &self.playback {
+            Some(p) => p.login(),
+            None => self.web.login(),
+        }
+    }
+
+    pub fn logout(&self) {
+        self.web.logout();
+        if let Some(p) = &self.playback {
+            p.logout();
+        }
+        // also forget a token left over from the other mode
+        security::delete(security::keys::SPOTIFY_WEBAPI_REFRESH);
+        security::delete(security::keys::SPOTIFY_REFRESH);
+    }
+
+    /// Web API access token (refreshing when needed).
+    pub fn access_token(&self, force_refresh: bool) -> Result<String, ApiError> {
+        self.web.access_token(force_refresh)
+    }
+
+    /// Token for librespot playback.
+    pub fn playback_token(&self) -> Result<String, ApiError> {
+        match &self.playback {
+            Some(p) => p.access_token(false),
+            None => self.web.access_token(false),
+        }
     }
 
     fn get(&self, url: &str) -> Result<Value, ApiError> {
@@ -196,6 +275,18 @@ impl SpotifyApi {
         }
     }
 
+    /// Cheap change check for a saved collection: (total, newest item id) from a 1-item page.
+    /// `which` = "tracks" (Liked Songs), "albums" or "artists" (followed).
+    pub fn collection_signature(&self, which: &str) -> Result<(u64, String), ApiError> {
+        let (url, ptr) = match which {
+            "tracks" => (format!("{API}/me/tracks?limit=1"), "/items/0/track/id"),
+            "albums" => (format!("{API}/me/albums?limit=1"), "/items/0/album/id"),
+            _ => (format!("{API}/me/following?type=artist&limit=1"), "/artists/items/0/id"),
+        };
+        let v = self.get(&url)?;
+        Ok(signature_of(&v, ptr))
+    }
+
     pub fn liked_tracks(&self) -> Result<Vec<Track>, ApiError> {
         let mut out = Vec::new();
         self.paged(&format!("{API}/me/tracks?limit=50"), 100_000, |it| {
@@ -255,6 +346,24 @@ impl SpotifyApi {
     }
 
     pub fn search(&self, q: &str) -> Result<SearchResults, ApiError> {
+        let key = q.trim().to_lowercase();
+        {
+            let mut c = self.search_cache.lock().unwrap();
+            c.retain(|(_, t, _)| t.elapsed() < std::time::Duration::from_secs(300));
+            if let Some((_, _, r)) = c.iter().find(|(k, _, _)| *k == key) {
+                return Ok(r.clone());
+            }
+        }
+        let r = self.search_uncached(q)?;
+        let mut c = self.search_cache.lock().unwrap();
+        c.push((key, std::time::Instant::now(), r.clone()));
+        if c.len() > 16 {
+            c.remove(0);
+        }
+        Ok(r)
+    }
+
+    fn search_uncached(&self, q: &str) -> Result<SearchResults, ApiError> {
         let url = url::Url::parse_with_params(
             &format!("{API}/search"),
             &[("q", q), ("type", "track,album,artist,playlist"), ("limit", "10")],
@@ -326,6 +435,11 @@ impl SpotifyApi {
 
 // ---------------------------------------------------------------------------
 // Parsing (pure; unit tested)
+
+pub fn signature_of(v: &Value, first_id_ptr: &str) -> (u64, String) {
+    let total = v["total"].as_u64().or_else(|| v["artists"]["total"].as_u64()).unwrap_or(0);
+    (total, v.pointer(first_id_ptr).and_then(|x| x.as_str()).unwrap_or_default().to_string())
+}
 
 fn s(v: &Value) -> String {
     v.as_str().unwrap_or_default().to_string()
@@ -478,6 +592,15 @@ mod tests {
         let b = parse_playlist(&p_old, "me").unwrap();
         assert_eq!(b.track_count, 5);
         assert!(!b.owned_by_user);
+    }
+
+    #[test]
+    fn collection_signatures() {
+        let liked = json!({"total": 680, "items": [{"track": {"id": "abc"}}]});
+        assert_eq!(signature_of(&liked, "/items/0/track/id"), (680, "abc".to_string()));
+        let artists = json!({"artists": {"total": 12, "items": [{"id": "x"}]}});
+        assert_eq!(signature_of(&artists, "/artists/items/0/id"), (12, "x".to_string()));
+        assert_eq!(signature_of(&json!({}), "/items/0/id"), (0, String::new()));
     }
 
     #[test]

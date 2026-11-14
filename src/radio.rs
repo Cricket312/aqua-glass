@@ -307,6 +307,54 @@ pub struct StreamResolver {
     pub youtube: Option<Arc<crate::services::youtube::YouTubeApi>>,
     pub provider: RadioProvider,
     pub spotify_playable: bool,
+    /// Remembered lookups (hits *and* misses) shared across refills.
+    pub cache: Arc<Mutex<ResolveCache>>,
+    /// Remaining network searches allowed for this refill.
+    pub budget: std::cell::Cell<usize>,
+}
+
+/// Bounded cache of candidate › playable track lookups (None = known miss).
+#[derive(Default)]
+pub struct ResolveCache {
+    map: HashMap<String, Option<Track>>,
+    order: VecDeque<String>,
+}
+
+pub const RESOLVE_CACHE_MAX: usize = 600;
+/// Network searches per refill (keeps radio far below service rate limits).
+pub const SEARCH_BUDGET: usize = 12;
+
+impl ResolveCache {
+    pub fn get(&self, k: &str) -> Option<&Option<Track>> {
+        self.map.get(k)
+    }
+    pub fn put(&mut self, k: String, v: Option<Track>) {
+        if self.map.insert(k.clone(), v).is_none() {
+            self.order.push_back(k);
+            while self.order.len() > RESOLVE_CACHE_MAX {
+                if let Some(old) = self.order.pop_front() {
+                    self.map.remove(&old);
+                }
+            }
+        }
+    }
+    pub fn len(&self) -> usize {
+        self.map.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.map.is_empty()
+    }
+}
+
+impl StreamResolver {
+    fn take_budget(&self) -> bool {
+        let b = self.budget.get();
+        if b == 0 {
+            return false;
+        }
+        self.budget.set(b - 1);
+        true
+    }
 }
 
 fn accept(src: &Track, cands: Vec<Track>) -> Option<Track> {
@@ -330,24 +378,44 @@ impl Resolver for StreamResolver {
                 return Some(t.clone());
             }
         }
+        let key = format!("{:?}|{id}", self.provider);
+        if let Some(hit) = self.cache.lock().unwrap().get(&key) {
+            return hit.clone();
+        }
+        let mut found = None;
+        let mut searched = false;
         if use_spotify {
             if let Some(sp) = &self.spotify {
+                if !self.take_budget() {
+                    return None; // budget exhausted: try again on the next refill
+                }
+                searched = true;
                 let q = format!("track:\"{}\" artist:\"{}\"", c.title.replace('"', ""), c.artist.replace('"', ""));
-                if let Ok(r) = sp.search_tracks(&q, 5) {
-                    if let Some(t) = accept(&src, r) {
-                        return Some(t);
+                match sp.search_tracks(&q, 5) {
+                    Ok(r) => found = accept(&src, r),
+                    Err(crate::services::ApiError::RateLimited(_)) => {
+                        self.budget.set(0); // stop searching for this refill
+                        return None;
                     }
+                    Err(_) => return None, // transient: don't cache
                 }
             }
         }
-        if self.provider == RadioProvider::YouTube {
+        if found.is_none() && self.provider == RadioProvider::YouTube {
             if let Some(yt) = &self.youtube {
+                if !self.take_budget() {
+                    return None;
+                }
+                searched = true;
                 if let Ok(r) = yt.search_tracks(&format!("{} {}", c.artist, c.title), 3) {
-                    return accept(&src, r);
+                    found = accept(&src, r);
                 }
             }
         }
-        None
+        if searched {
+            self.cache.lock().unwrap().put(key, found.clone());
+        }
+        found
     }
 }
 
@@ -480,10 +548,11 @@ struct W {
     last_seq: u64,
     upcoming: usize,
     current: Option<Track>,
+    resolve_cache: Arc<Mutex<ResolveCache>>,
 }
 
 fn worker(rx: mpsc::Receiver<Msg>, tx: mpsc::Sender<Msg>, status: Arc<Mutex<Status>>, deps: Deps, prefs: Prefs) {
-    let mut w = W { deps, prefs, status, tx, session: Session::default(), run: 0, last_fail: None, stalled: false, last_seq: 0, upcoming: 0, current: None };
+    let mut w = W { deps, prefs, status, tx, session: Session::default(), run: 0, last_fail: None, stalled: false, last_seq: 0, upcoming: 0, current: None, resolve_cache: Arc::new(Mutex::new(ResolveCache::default())) };
     while let Ok(m) = rx.recv() {
         match m {
             Msg::Shutdown => break,
@@ -643,10 +712,12 @@ impl W {
         let library = self.deps.library.clone();
         let history = self.deps.history.clone();
         let spotify_playable = self.deps.engine.state.read().unwrap().spotify == SpotifyStatus::Ready && spotify.is_signed_in();
+        let cache = self.resolve_cache.clone();
         // the fetch thread works on a copy of the session that is merged back afterwards
         std::thread::Builder::new()
             .name("radio-fetch".into())
             .spawn(move || {
+                let _bg = crate::services::ratelimit::background();
                 let local: Vec<Track> = library.lock().unwrap().tracks(ProviderKind::Local, LOCAL_ALL_ID).cloned().unwrap_or_default();
                 let index: HashMap<String, Track> = local.iter().map(|t| (track_ident(t), t.clone())).collect();
                 let mut prefs = prefs;
@@ -667,11 +738,11 @@ impl W {
                     let mut rng = rand::rng();
                     let ranked = rank(c, &seed, &prefs, &session, &|id| h.heard(id), &|id| h.heard_since(id, week), &mut rng);
                     drop(h);
-                    let resolver = StreamResolver { local: index, spotify: Some(spotify.clone()), youtube: Some(youtube.clone()), provider: prefs.provider, spotify_playable };
+                    let resolver = StreamResolver { local: index, spotify: Some(spotify.clone()), youtube: Some(youtube.clone()), provider: prefs.provider, spotify_playable, cache, budget: std::cell::Cell::new(SEARCH_BUDGET) };
                     if !spotify_playable && resolver.local.is_empty() && prefs.provider != RadioProvider::YouTube {
                         return Err("No playable source: sign in to Spotify (Premium) or add local music.".to_string());
                     }
-                    Ok(build_batch(ranked, want, &resolver, &mut session, want * 4))
+                    Ok(build_batch(ranked, want, &resolver, &mut session, want * 6))
                 });
                 let res = match res {
                     Ok(r) => r,
@@ -859,6 +930,22 @@ mod tests {
         let e = self_test_with(&Empty, "x", "y", &[]);
         assert!(!e.ok());
         assert!(self_test("", "a", "b", &[]).report.contains("No Last.fm API key"));
+    }
+
+    #[test]
+    fn resolver_uses_budget_and_caches_misses() {
+        // no Spotify client: nothing is searched, nothing cached, budget untouched
+        let r = StreamResolver { local: HashMap::new(), spotify: None, youtube: None, provider: RadioProvider::Automatic, spotify_playable: false, cache: Default::default(), budget: std::cell::Cell::new(2) };
+        assert!(r.resolve(&Cand { artist: "a".into(), title: "b".into(), score: 1.0, listeners: None, track: None }).is_none());
+        assert_eq!(r.budget.get(), 2);
+        assert!(r.cache.lock().unwrap().is_empty());
+        assert!(r.take_budget() && r.take_budget() && !r.take_budget());
+        let mut c = ResolveCache::default();
+        for i in 0..RESOLVE_CACHE_MAX + 50 {
+            c.put(format!("k{i}"), None);
+        }
+        assert_eq!(c.len(), RESOLVE_CACHE_MAX, "bounded");
+        assert!(c.get("k0").is_none() && c.get(&format!("k{}", RESOLVE_CACHE_MAX + 49)).is_some());
     }
 
     #[test]

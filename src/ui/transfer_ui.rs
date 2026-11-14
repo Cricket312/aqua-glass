@@ -203,6 +203,7 @@ fn build(app: &mut AquaApp, src: Playlist, tracks: Vec<Track>, target: ProviderK
     let sp = app.spotify.clone();
     let yt = app.youtube.clone();
     app.jobs.spawn(format!("Match {} tracks", tracks.len()), move |h| {
+        let _bg = crate::services::ratelimit::background();
         let search = |q: &str| -> Result<Vec<Track>, String> {
             match target {
                 ProviderKind::Spotify => sp.search_tracks(q, 8).map_err(|e| e.to_string()),
@@ -301,6 +302,7 @@ fn execute(app: &mut AquaApp) {
     let yt = app.youtube.clone();
     let user = app.sp_profile.as_ref().map(|p| p.id.clone()).unwrap_or_default();
     app.jobs.spawn("Transfer playlist", move |h| {
+        let _bg = crate::services::ratelimit::background();
         let target = plan.target;
         let create = |name: &str, desc: &str| -> Result<String, String> {
             match target {

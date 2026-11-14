@@ -57,6 +57,8 @@ pub struct ProviderLib {
     pub import_liked: bool,
     pub import_albums: bool,
     pub import_artists: bool,
+    /// Change signatures (total, newest id) of saved collections from the last sync.
+    pub signatures: BTreeMap<String, (u64, String)>,
     #[serde(skip)]
     pub loaded: HashMap<String, Vec<Track>>,
 }
