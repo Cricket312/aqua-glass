@@ -20,7 +20,11 @@ pub fn show(app: &mut AquaApp, ctx: &egui::Context) {
     let overlay = app.cfg.active("overlay");
     if mini || overlay {
         // keep painting the satellite windows while the main window is minimized/hidden
-        ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::RequestPaintWhileHidden);
+        // (only then — sending it while visible would force continuous repaints)
+        let minimized = ctx.input(|i| i.viewport().minimized.unwrap_or(false));
+        if minimized || app.main_hidden {
+            ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::RequestPaintWhileHidden);
+        }
         if app.state.playing {
             ctx.request_repaint_after(std::time::Duration::from_millis(500));
         }
@@ -102,13 +106,13 @@ fn mini_player(app: &mut AquaApp, ctx: &egui::Context) {
                     ui.add(egui::Label::new(RichText::new(l).color(accent).italics()).truncate());
                 }
                 ui.horizontal(|ui| {
-                    if widgets::small_button(ui, icon::PREV, "Previous").clicked() {
+                    if widgets::small_button(ui, icon::PREV(), "Previous").clicked() {
                         cmds.push(Cmd::Prev);
                     }
-                    if ui.add(egui::Button::new(RichText::new(if st.playing { icon::PAUSE } else { icon::PLAY }).color(accent))).clicked() {
+                    if ui.add(egui::Button::new(RichText::new(if st.playing { icon::PAUSE() } else { icon::PLAY() }).color(accent))).clicked() {
                         cmds.push(Cmd::Toggle);
                     }
-                    if widgets::small_button(ui, icon::NEXT, "Next").clicked() {
+                    if widgets::small_button(ui, icon::NEXT(), "Next").clicked() {
                         cmds.push(Cmd::Next);
                     }
                     if !compact {

@@ -228,6 +228,7 @@ dependencies = [
  "directories",
  "discord-rich-presence",
  "eframe",
+ "egui",
  "global-hotkey",
  "image",
  "keyring",

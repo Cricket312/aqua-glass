@@ -150,8 +150,21 @@ pub fn from_response(r: &serde_json::Value) -> Lyrics {
 
 /// Fetch lyrics (blocking). Uses an exact lookup first, then a search.
 pub fn fetch(track: &Track) -> anyhow::Result<Lyrics> {
+    fetch_inner(track).map_err(|e| {
+        if e.downcast_ref::<reqwest::Error>().is_some_and(|r| r.is_connect() || r.is_timeout() || r.is_request()) {
+            anyhow::anyhow!("couldn't reach lrclib.net (check your internet connection)")
+        } else {
+            e
+        }
+    })
+}
+
+fn fetch_inner(track: &Track) -> anyhow::Result<Lyrics> {
     let http = super::http();
     let artist = track.artists.first().cloned().unwrap_or_default();
+    if artist.is_empty() {
+        anyhow::bail!("this track has no artist tag, so lyrics can't be looked up");
+    }
     let dur = (track.duration_ms / 1000).to_string();
     let mut params = vec![("track_name", track.title.as_str()), ("artist_name", artist.as_str())];
     if !track.album.is_empty() {

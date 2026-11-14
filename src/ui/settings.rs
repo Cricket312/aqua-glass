@@ -33,7 +33,7 @@ pub fn page(app: &mut AquaApp, ui: &mut Ui) {
         app.settings.discord_app_id = app.cfg.services.discord_app_id.clone();
     }
     ui.horizontal(|ui| {
-        widgets::heading(ui, &format!("{} Settings", icon::SETTINGS));
+        widgets::heading(ui, &format!("{} Settings", icon::SETTINGS()));
         ui.add_space(20.0);
         let r = ui.add(egui::TextEdit::singleline(&mut app.settings.search).hint_text("🔍 Search settings (e.g. RAM, lyrics, Discord, background)").desired_width(360.0));
         if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
@@ -360,12 +360,6 @@ fn themes(app: &mut AquaApp, ui: &mut Ui) {
         s(ui, "Hover effect strength", &mut t.hover_strength, 0.0..=1.0);
         s(ui, "Animation speed", &mut t.animation_speed, 0.2..=5.0);
         s(ui, "Blur intensity (backgrounds)", &mut t.blur_intensity, 0.0..=2.0);
-        ui.label("Font weight (emulated)");
-        let mut w = t.font_weight as f32;
-        if ui.add(egui::Slider::new(&mut w, 100.0..=900.0).step_by(100.0)).changed() {
-            t.font_weight = w as u16;
-        }
-        ui.end_row();
         ui.label("Buttons");
         ui.horizontal(|ui| {
             ui.selectable_value(&mut t.button_style, ButtonStyle::Filled, "Filled");
@@ -819,7 +813,7 @@ fn services(app: &mut AquaApp, ui: &mut Ui) {
                 if ui.button("Disconnect…").clicked() {
                     app.confirm = Some(Confirm::DisconnectSpotify);
                 }
-                if ui.button(format!("{} Sync now", icon::SYNC)).clicked() {
+                if ui.button(format!("{} Sync now", icon::SYNC())).clicked() {
                     app.sync_now(ProviderKind::Spotify, false);
                 }
             } else if ui.button("Sign in with Spotify").clicked() {
@@ -868,7 +862,7 @@ fn services(app: &mut AquaApp, ui: &mut Ui) {
                 if ui.button("Disconnect…").clicked() {
                     app.confirm = Some(Confirm::DisconnectYouTube);
                 }
-                if ui.button(format!("{} Sync now", icon::SYNC)).clicked() {
+                if ui.button(format!("{} Sync now", icon::SYNC())).clicked() {
                     app.sync_now(ProviderKind::YouTube, false);
                 }
             } else if ui.add_enabled(app.youtube.configured(), egui::Button::new("Sign in with Google")).clicked() {
@@ -881,7 +875,7 @@ fn services(app: &mut AquaApp, ui: &mut Ui) {
         ui.collapsing("How to set up YouTube Music (one time, ~5 minutes)", |ui| {
             ui.label("1. Open console.cloud.google.com, create a project and enable “YouTube Data API v3”.");
             ui.label("2. OAuth consent screen: External, add yourself as a test user.");
-            ui.label("3. Credentials → Create OAuth client ID → Application type “Desktop app”.");
+            ui.label("3. Credentials › Create OAuth client ID › Application type “Desktop app”.");
             ui.label("4. Paste the client ID above, store the client secret, restart Aqua Glass, then Sign in.");
         });
         widgets::note(ui, "What works: your playlists, liked music, search, creating playlists and adding tracks (official YouTube Data API v3). What doesn't: Google provides no audio API for third-party apps and its terms forbid extracting streams, so YouTube tracks open in YouTube Music in your browser. Albums and artist discographies aren't exposed by the API. Default quota: 10,000 units/day (search 100, add-to-playlist 50).");
@@ -952,7 +946,7 @@ fn library(app: &mut AquaApp, ui: &mut Ui) {
             if running {
                 ui.spinner();
                 ui.label("syncing…");
-            } else if ui.button(format!("{} Sync Now", icon::SYNC)).clicked() {
+            } else if ui.button(format!("{} Sync Now", icon::SYNC())).clicked() {
                 app.sync_now(p, false);
             }
         });
@@ -1016,7 +1010,7 @@ fn library(app: &mut AquaApp, ui: &mut Ui) {
 
 fn transfer(app: &mut AquaApp, ui: &mut Ui) {
     toggles(app, ui, Category::Transfer);
-    if ui.button(format!("{} Open Playlist Transfer", icon::TRANSFER)).clicked() {
+    if ui.button(format!("{} Open Playlist Transfer", icon::TRANSFER())).clicked() {
         app.navigate(Page::Transfer);
     }
     widgets::note(ui, "Transfers never modify the source playlist. A JSON backup of the source and a log of each transfer are written to the transfers folder.");

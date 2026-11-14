@@ -2,9 +2,9 @@
 //! thread, so playback (and auto-advance) continue while the UI is hidden.
 //!
 //! Backends:
-//! * Spotify → librespot (Premium), via `audio::spotify`.
-//! * Local files → symphonia decoder, via `audio::local`.
-//! * YouTube → opened in YouTube Music / YouTube in the browser (no
+//! * Spotify › librespot (Premium), via `audio::spotify`.
+//! * Local files › symphonia decoder, via `audio::local`.
+//! * YouTube › opened in YouTube Music / YouTube in the browser (no
 //!   third-party audio API exists; see `services::youtube`).
 
 use super::output::Output;
@@ -46,7 +46,11 @@ impl Queue {
     /// Order-position of the track that follows the current one.
     /// `auto` = natural end of track (honours repeat-one).
     pub fn next_pos(&self, auto: bool) -> Option<usize> {
-        let p = self.pos?;
+        self.next_pos_from(self.pos?, auto)
+    }
+
+    /// Order-position following `p`.
+    pub fn next_pos_from(&self, p: usize, auto: bool) -> Option<usize> {
         if auto && self.repeat == RepeatMode::One {
             return Some(p);
         }
@@ -322,7 +326,8 @@ impl Engine {
             q: Queue::default(),
             active: Active::None,
             spotify: None,
-            pending: None,
+            pending: Default::default(),
+            feeding: None,
             playing: false,
             pending_restore_ms: None,
             local_token: 0,
@@ -370,7 +375,10 @@ enum Active {
 /// A track that has started feeding the output but is not yet audible (gapless).
 struct Pending {
     boundary_frame: u64,
-    order_pos: usize,
+    /// None = end of queue.
+    order_pos: Option<usize>,
+    /// The track was not pre-fed (non-gapless): start it when the boundary is reached.
+    needs_start: bool,
 }
 
 struct Worker {
@@ -387,7 +395,9 @@ struct Worker {
     spotify: Option<super::spotify::SpotifyPlayer>,
     #[cfg(not(feature = "spotify-playback"))]
     spotify: Option<()>,
-    pending: Option<Pending>,
+    pending: std::collections::VecDeque<Pending>,
+    /// Order-position of the track currently being decoded into the output.
+    feeding: Option<usize>,
     playing: bool,
     pending_restore_ms: Option<u64>,
     local_token: u64,
@@ -398,7 +408,7 @@ struct Worker {
 impl Worker {
     fn run(&mut self, rx: mpsc::Receiver<EngineEvent>) {
         loop {
-            let ev = rx.recv_timeout(Duration::from_millis(if self.pending.is_some() { 20 } else { 250 }));
+            let ev = rx.recv_timeout(Duration::from_millis(if !self.pending.is_empty() { 20 } else { 250 }));
             match ev {
                 Ok(EngineEvent::Cmd(Cmd::Shutdown)) => {
                     self.stop_all();
@@ -442,7 +452,8 @@ impl Worker {
     }
 
     fn stop_all(&mut self) {
-        self.pending = None;
+        self.pending.clear();
+        self.feeding = None;
         #[cfg(feature = "spotify-playback")]
         if let (Active::Spotify, Some(sp)) = (&self.active, &self.spotify) {
             sp.stop();
@@ -474,6 +485,7 @@ impl Worker {
             self.out.wait_faded();
         }
         self.stop_all();
+        self.feeding = self.q.pos;
         self.reset_clock(start_ms);
         self.publish(|s| {
             s.error = None;
@@ -602,51 +614,64 @@ impl Worker {
         self.publish(|s| s.spotify = SpotifyStatus::Unavailable("built without spotify-playback".into()));
     }
 
-    /// The current source finished feeding the output.
+    /// The track being fed finished decoding into the output.
     fn source_finished(&mut self) {
-        let Some(np) = self.q.next_pos(true) else {
+        let Some(base) = self.feeding.or(self.q.pos) else { return };
+        let boundary = self.out.s.pushed.load(Ordering::Relaxed);
+        let Some(np) = self.q.next_pos_from(base, true) else {
             // end of queue: let the buffer drain, then stop
-            self.pending = Some(Pending { boundary_frame: self.out.s.pushed.load(Ordering::Relaxed), order_pos: usize::MAX });
+            self.feeding = None;
+            self.pending.push_back(Pending { boundary_frame: boundary, order_pos: None, needs_start: false });
             return;
         };
-        let boundary = self.out.s.pushed.load(Ordering::Relaxed);
+        let cur_provider = self.q.tracks.get(self.q.order[base]).map(|t| t.provider);
         let next = self.q.tracks[self.q.order[np]].clone();
-        let gapless_ok = self.opts.gapless && next.provider == self.q.current().map(|t| t.provider).unwrap_or(ProviderKind::Local) && next.provider != ProviderKind::YouTube;
+        let gapless_ok = self.opts.gapless && Some(next.provider) == cur_provider && next.provider != ProviderKind::YouTube;
         if gapless_ok {
             // feed the next track right behind the current one
+            self.feeding = Some(np);
             match next.provider {
                 ProviderKind::Local => self.start_local(&next, 0),
                 ProviderKind::Spotify => self.start_spotify(&next, 0),
                 _ => {}
             }
+        } else {
+            self.feeding = None;
         }
-        self.pending = Some(Pending { boundary_frame: boundary, order_pos: if gapless_ok { np } else { np | (1 << 62) } });
+        self.pending.push_back(Pending { boundary_frame: boundary, order_pos: Some(np), needs_start: !gapless_ok });
     }
 
     fn check_boundary(&mut self) {
-        let Some(p) = &self.pending else { return };
-        let consumed = self.out.s.consumed.load(Ordering::Relaxed);
-        let drained = consumed >= p.boundary_frame || (self.out.is_paused() && self.out.buffered_frames() == 0 && !self.playing);
-        if !drained {
-            return;
-        }
-        let p = self.pending.take().unwrap();
-        if p.order_pos == usize::MAX {
-            self.playing = false;
-            self.active = Active::None;
-            self.out.set_paused(true);
-            self.publish(|s| s.message = Some("End of queue".into()));
-            return;
-        }
-        let needs_start = p.order_pos & (1 << 62) != 0;
-        let opos = p.order_pos & !(1 << 62);
-        self.q.pos = Some(opos);
-        if needs_start {
-            self.start_current(0, true);
-        } else {
-            self.clock.track_start_frame.store(p.boundary_frame, Ordering::Relaxed);
-            self.clock.base_ms.store(0, Ordering::Relaxed);
-            self.publish(|s| s.error = None);
+        loop {
+            let Some(p) = self.pending.front() else { return };
+            let consumed = self.out.s.consumed.load(Ordering::Relaxed);
+            let drained = consumed >= p.boundary_frame || (self.out.is_paused() && self.out.buffered_frames() == 0 && !self.playing);
+            if !drained {
+                return;
+            }
+            let p = self.pending.pop_front().unwrap();
+            match p.order_pos {
+                None => {
+                    self.pending.clear();
+                    self.playing = false;
+                    self.active = Active::None;
+                    self.feeding = None;
+                    self.out.set_paused(true);
+                    self.publish(|s| s.message = Some("End of queue".into()));
+                    return;
+                }
+                Some(np) if p.needs_start => {
+                    self.q.pos = Some(np);
+                    self.start_current(0, true);
+                    return;
+                }
+                Some(np) => {
+                    self.q.pos = Some(np);
+                    self.clock.track_start_frame.store(p.boundary_frame, Ordering::Relaxed);
+                    self.clock.base_ms.store(0, Ordering::Relaxed);
+                    self.publish(|s| s.error = None);
+                }
+            }
         }
     }
 
@@ -761,7 +786,7 @@ impl Worker {
                 }
             }
             Cmd::Next => {
-                self.pending = None;
+                self.pending.clear();
                 if self.q.advance(false).is_some() {
                     self.start_current(0, true);
                 } else {
@@ -773,7 +798,7 @@ impl Worker {
                 if pos > 3000 || self.q.pos == Some(0) && self.q.repeat != RepeatMode::All {
                     self.seek(0);
                 } else {
-                    self.pending = None;
+                    self.pending.clear();
                     self.q.back();
                     self.start_current(0, true);
                 }
@@ -785,7 +810,7 @@ impl Worker {
             }
             Cmd::JumpTo(opos) => {
                 if opos < self.q.order.len() {
-                    self.pending = None;
+                    self.pending.clear();
                     self.q.pos = Some(opos);
                     self.start_current(0, true);
                 }
@@ -793,7 +818,7 @@ impl Worker {
             Cmd::Remove(opos) => {
                 let was_current = self.q.remove(opos);
                 if was_current {
-                    self.pending = None;
+                    self.pending.clear();
                     if self.q.current().is_some() {
                         self.start_current(0, self.playing);
                     } else {
@@ -875,9 +900,11 @@ impl Worker {
     fn seek(&mut self, ms: u64) {
         let dur = self.q.current().map(|t| t.duration_ms).unwrap_or(0);
         let ms = if dur > 0 { ms.min(dur.saturating_sub(500)) } else { ms };
-        self.pending = None;
+        self.pending.clear();
         match self.active {
             Active::Local(_) => self.start_current(ms, self.playing),
+            #[cfg(feature = "spotify-playback")]
+            Active::Spotify if self.feeding != self.q.pos => self.start_current(ms, self.playing),
             #[cfg(feature = "spotify-playback")]
             Active::Spotify => {
                 self.out.flush();

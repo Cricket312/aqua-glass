@@ -22,6 +22,9 @@ pub mod winint;
 pub fn run() -> eframe::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let start_hidden = args.iter().any(|a| a == "--minimized");
+    // `aqua-glass.exe song.mp3 other.flac` plays the files (enables "Open with")
+    let files: Vec<std::path::PathBuf> = args.iter().skip(1).map(std::path::PathBuf::from).filter(|p| p.is_file()).collect();
+    let start_page = args.iter().position(|a| a == "--page").and_then(|i| args.get(i + 1)).cloned();
     let (cfg, warning) = config::Config::load();
     util::init_logging(cfg.active("diagnostic_logging"));
     services::install_crypto();
@@ -49,6 +52,10 @@ pub fn run() -> eframe::Result<()> {
     eframe::run_native(
         "Aqua Glass",
         opts,
-        Box::new(move |cc| Ok(Box::new(ui::AquaApp::new(cc, cfg, warning, start_hidden)))),
+        Box::new(move |cc| {
+            let mut app = ui::AquaApp::new(cc, cfg, warning, start_hidden);
+            app.open_cli(files, start_page.as_deref());
+            Ok(Box::new(app))
+        }),
     )
 }

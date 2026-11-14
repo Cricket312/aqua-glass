@@ -41,8 +41,6 @@ pub struct Theme {
     pub spacing: f32,
     pub font_size: f32,
     pub heading_size: f32,
-    /// Emulated weight: >= 600 renders labels as strong.
-    pub font_weight: u16,
     pub border_width: f32,
     pub shadow_intensity: f32,
     pub hover_strength: f32,
@@ -75,7 +73,6 @@ fn aqua_default() -> Theme {
         spacing: 8.0,
         font_size: 14.0,
         heading_size: 22.0,
-        font_weight: 400,
         border_width: 1.0,
         shadow_intensity: 0.5,
         hover_strength: 0.6,
@@ -254,6 +251,7 @@ pub fn apply(ctx: &egui::Context, theme: &Theme, o: &ApplyOpts) {
     w.active.corner_radius = r;
     w.open = w.active;
     ctx.set_visuals(v);
+    crate::ui::widgets::icon::STYLE.store(match t.icon_style { IconStyle::Solid => 0, IconStyle::Outline => 1, IconStyle::Text => 2 }, std::sync::atomic::Ordering::Relaxed);
 
     ctx.global_style_mut(|s| {
         let sp = if o.custom_theme { t.spacing.clamp(2.0, 24.0) } else { 6.0 };
@@ -311,7 +309,6 @@ impl Theme {
         self.hover_strength = self.hover_strength.clamp(0.0, 1.0);
         self.animation_speed = self.animation_speed.clamp(0.2, 5.0);
         self.blur_intensity = self.blur_intensity.clamp(0.0, 2.0);
-        self.font_weight = self.font_weight.clamp(100, 900);
         self.name = self.name.chars().take(64).collect();
     }
     pub fn to_toml(&self) -> String {

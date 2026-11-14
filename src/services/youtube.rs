@@ -56,7 +56,7 @@ impl YouTubeApi {
 
     pub fn login(&self) -> anyhow::Result<()> {
         if !self.configured() {
-            anyhow::bail!("Enter your Google OAuth client id first (Settings → Music Services → YouTube Music).");
+            anyhow::bail!("Enter your Google OAuth client id first (Settings › Music Services › YouTube Music).");
         }
         let r = oauth::authorize(&self.spec, super::http())?;
         let t = Token::from_response(r, None);

@@ -166,6 +166,8 @@ pub struct AquaApp {
     pub local_scanning: bool,
     pub accent_override: Option<[u8; 3]>,
     pub vis_shared: viewports::Shared,
+    /// Main window hidden to the tray.
+    pub main_hidden: bool,
 }
 
 pub enum Confirm {
@@ -272,7 +274,7 @@ impl AquaApp {
             confirm: None,
             alternatives: None,
             bg: background::BgState::default(),
-            last_state_version: 0,
+            last_state_version: u64::MAX,
             state: PlayerState::default(),
             start_hidden,
             first_frame: true,
@@ -281,6 +283,7 @@ impl AquaApp {
             local_scanning: false,
             accent_override: None,
             vis_shared: viewports::Shared::default(),
+            main_hidden: false,
         };
         app.settings.category = features::Category::ALL
             .into_iter()
@@ -292,9 +295,45 @@ impl AquaApp {
         for e in app.theme_errors.clone() {
             app.toast(format!("Invalid theme skipped: {e}"), true);
         }
+        app.engine.send(Cmd::SetRepeat(app.cfg.playback.repeat));
+        app.engine.send(Cmd::SetShuffle(app.cfg.playback.shuffle));
         app.restore_sessions();
         app.restore_queue();
+        // first start with local folders configured: build the local library
+        let needs_scan = app.cfg.services.local_enabled && !app.cfg.services.local_folders.is_empty() && app.library.lock().unwrap().lib(ProviderKind::Local).last_sync == 0;
+        if needs_scan {
+            app.scan_local();
+        }
         app
+    }
+
+    /// Handle command-line files / start page.
+    pub fn open_cli(&mut self, files: Vec<std::path::PathBuf>, page: Option<&str>) {
+        #[cfg(feature = "local-files")]
+        {
+            let tracks: Vec<Track> = files.iter().filter_map(|f| crate::audio::local::probe_track(f)).collect();
+            if !tracks.is_empty() {
+                self.engine.send(Cmd::Play { tracks, start: 0 });
+            }
+        }
+        #[cfg(not(feature = "local-files"))]
+        let _ = files;
+        if let Some(p) = page {
+            match p {
+                "home" => self.page = Page::Home,
+                "search" => self.page = Page::Search,
+                "library" => self.page = Page::Library,
+                "now-playing" => self.page = Page::NowPlaying,
+                "queue" => self.page = Page::Queue,
+                "transfer" => self.page = Page::Transfer,
+                "settings" => self.page = Page::Settings,
+                "performance" => {
+                    self.page = Page::Settings;
+                    self.settings.category = features::Category::Performance;
+                }
+                _ => {}
+            }
+        }
     }
 
     pub fn toast(&mut self, text: impl Into<String>, error: bool) {
@@ -428,7 +467,7 @@ impl AquaApp {
                 });
             }
             ProviderKind::Local => self.scan_local(),
-            _ => self.toast(format!("Sign in to {} first (Settings → Music Services).", p.label()), true),
+            _ => self.toast(format!("Sign in to {} first (Settings › Music Services).", p.label()), true),
         }
     }
 
@@ -456,7 +495,7 @@ impl AquaApp {
         }
         if let Some(t) = tracks.get(start) {
             if !self.provider_enabled(t.provider) {
-                self.toast(format!("{} is disabled in Settings → Music Services.", t.provider.label()), true);
+                self.toast(format!("{} is disabled in Settings › Music Services.", t.provider.label()), true);
                 return;
             }
         }
@@ -566,7 +605,7 @@ impl AquaApp {
         }
     }
 
-    /// Tracks of a playlist: imported → disk cache; otherwise fetched live (not stored).
+    /// Tracks of a playlist: imported › disk cache; otherwise fetched live (not stored).
     pub fn playlist_tracks(&mut self, p: ProviderKind, id: &str) -> Option<Result<Vec<Track>, String>> {
         if let Some(t) = self.library.lock().unwrap().tracks(p, id) {
             return Some(Ok(t.clone()));
@@ -752,7 +791,7 @@ impl AquaApp {
                 }
                 self.settings.discord_opts_last = Some(dopts);
             } else if d.is_some() {
-                *d = None; // drop → thread clears presence and exits
+                *d = None; // drop › thread clears presence and exits
                 self.settings.discord_opts_last = None;
             }
         }
@@ -898,7 +937,7 @@ impl AquaApp {
                     Ok(r) => {
                         let mut s = format!("{} synced: {} new, {} changed, {} unchanged", provider.label(), r.added.len(), r.changed.len(), r.unchanged);
                         if !r.removed_upstream.is_empty() {
-                            s.push_str(&format!(", {} removed upstream (kept locally — review in Settings → Library)", r.removed_upstream.len()));
+                            s.push_str(&format!(", {} removed upstream (kept locally — review in Settings › Library)", r.removed_upstream.len()));
                         }
                         let err = !r.errors.is_empty();
                         if err {
@@ -974,11 +1013,13 @@ impl AquaApp {
         while let Ok(c) = self.ui_rx.try_recv() {
             match c {
                 UiCmd::Show => {
+                    self.main_hidden = false;
                     ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
                     ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
                     ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
                 }
                 UiCmd::OpenSettings => {
+                    self.main_hidden = false;
                     ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
                     ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
                     self.navigate(Page::Settings);
@@ -1012,7 +1053,7 @@ impl AquaApp {
                         self.navigate(Page::NowPlaying);
                     }
                 } else {
-                    self.toast("Lyrics are disabled (Settings → Lyrics).", true);
+                    self.toast("Lyrics are disabled (Settings › Lyrics).", true);
                 }
             }
             Action::ToggleMiniPlayer => {
@@ -1021,7 +1062,7 @@ impl AquaApp {
                     self.mini_open.store(v, Ordering::Relaxed);
                     ctx.request_repaint();
                 } else {
-                    self.toast("Mini-player is disabled (Settings → Mini-Player).", true);
+                    self.toast("Mini-player is disabled (Settings › Mini-Player).", true);
                 }
             }
             Action::OpenSearch => {
@@ -1127,7 +1168,7 @@ impl AquaApp {
                 a.max_px = a.max_px.min(160);
                 a.budget_bytes = 4 * 1024 * 1024;
                 a.clear();
-                actions.push("artwork resolution → 160 px, cache cleared".into());
+                actions.push("artwork resolution › 160 px, cache cleared".into());
                 drop(a);
                 self.bg.prev = None;
                 if !self.cfg.active("metadata_cache") || self.library.lock().unwrap().loaded_bytes_estimate() > 8 << 20 {
@@ -1207,6 +1248,9 @@ impl AquaApp {
         self.vis_wanted = true;
         let fps = if self.cfg.active("vis_reduced_motion") { self.cfg.visualizer.fps.min(20) } else { self.cfg.visualizer.fps };
         let a = self.analyzer.get_or_insert_with(Analyzer::new);
+        if a.bars.len() != self.cfg.visualizer.bars {
+            a.bars.resize(self.cfg.visualizer.bars, 0.0);
+        }
         if self.vis_last.elapsed() >= Duration::from_millis(1000 / fps.max(1) as u64) {
             self.vis_last = Instant::now();
             self.out.vis_snapshot(&mut self.vis_buf);
@@ -1330,6 +1374,7 @@ impl eframe::App for AquaApp {
         if close && !self.quitting && self.cfg.active("close_to_tray") && self.ints.tray.is_some() {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+            self.main_hidden = true;
         } else if close {
             self.save_queue();
             self.save_if_dirty(true);
@@ -1338,6 +1383,7 @@ impl eframe::App for AquaApp {
         if minimized && self.cfg.active("minimize_to_tray") && self.ints.tray.is_some() {
             ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+            self.main_hidden = true;
         }
     }
 
@@ -1358,6 +1404,7 @@ impl eframe::App for AquaApp {
             if self.start_hidden {
                 if self.cfg.active("tray") {
                     ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+                    self.main_hidden = true;
                 } else {
                     ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
                 }
@@ -1616,5 +1663,5 @@ impl AquaApp {
 }
 
 fn icon_play() -> &'static str {
-    widgets::icon::PLAY
+    widgets::icon::PLAY()
 }

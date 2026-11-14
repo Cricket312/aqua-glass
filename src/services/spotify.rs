@@ -4,9 +4,9 @@
 //! By default Aqua Glass uses the same public client id as librespot (the
 //! library that provides Premium playback), so one sign-in serves both the Web
 //! API and playback. Users may instead enter their own Spotify Developer client
-//! id (Settings → Music Services); note that since February 2026 Spotify's
+//! id (Settings › Music Services); note that since February 2026 Spotify's
 //! Development-Mode apps need a Premium owner, allow 5 users and have a reduced
-//! endpoint set (e.g. playlist `tracks` → `items`).
+//! endpoint set (e.g. playlist `tracks` › `items`).
 //!
 //! The parser accepts both the pre- and post-2026 field names.
 
@@ -140,7 +140,7 @@ impl SpotifyApi {
         let mut n = 0;
         while let Some(u) = url {
             let v = self.get(&u)?;
-            // some endpoints wrap the page (e.g. /me/following → {"artists": {...}})
+            // some endpoints wrap the page (e.g. /me/following › {"artists": {...}})
             let page = if v.get("items").is_some() { &v } else { v.as_object().and_then(|o| o.values().next()).unwrap_or(&v) };
             for it in page["items"].as_array().into_iter().flatten() {
                 f(it);

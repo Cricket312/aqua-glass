@@ -75,7 +75,7 @@ impl TransferUi {
 }
 
 pub fn page(app: &mut AquaApp, ui: &mut Ui) {
-    widgets::heading(ui, "⇄ Playlist Transfer");
+    widgets::heading(ui, "🔃 Playlist Transfer");
     widgets::note(ui, "Copy playlists between Spotify and YouTube Music, or back them up to files. The source playlist is never modified, and a backup is saved before every transfer.");
     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         widgets::section(ui, "1. Source");
@@ -268,7 +268,7 @@ fn preview(app: &mut AquaApp, ui: &mut Ui) {
                 };
                 ui.label(RichText::new(sym).color(widgets::impact_color(c)));
                 ui.add_sized([280.0, 20.0], egui::Label::new(format!("{} — {}", it.src.artist_line(), it.src.title)).truncate());
-                ui.label("→");
+                ui.label("›");
                 let sel = match it.choice.and_then(|c| it.candidates.get(c)) {
                     Some(c) => format!("{} — {} ({:.0}%)", c.track.artist_line(), c.track.title, c.score * 100.0),
                     None => "skip".into(),
@@ -342,7 +342,7 @@ fn history(app: &mut AquaApp, ui: &mut Ui) {
         ui.horizontal(|ui| {
             ui.label(crate::util::fmt_unix(l.at));
             widgets::provider_badge(ui, l.source_provider);
-            ui.label("→");
+            ui.label("›");
             widgets::provider_badge(ui, l.target);
             ui.label(format!("“{}”: {} added, {} skipped, {} failed", l.source_name, l.added, l.skipped.len(), l.failed.len()));
             if ui.small_button("Backup").on_hover_text(&l.backup_file).clicked() {

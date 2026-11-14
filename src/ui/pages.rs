@@ -68,24 +68,24 @@ fn nav(app: &mut AquaApp, ui: &mut Ui, ic: &str, label: &str, page: Page) {
 
 fn sidebar(app: &mut AquaApp, ui: &mut Ui) {
     ui.horizontal(|ui| {
-        ui.label(RichText::new("◆").color(app.accent()).size(22.0));
+        ui.label(RichText::new("💧").color(app.accent()).size(22.0));
         ui.label(RichText::new("Aqua Glass").strong().size(19.0));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             // application menu
             ui.menu_button("☰", |ui| {
-                if ui.button(format!("{}  Settings   (Ctrl+,)", icon::SETTINGS)).clicked() {
+                if ui.button(format!("{}  Settings   (Ctrl+,)", icon::SETTINGS())).clicked() {
                     app.navigate(Page::Settings);
                     ui.close();
                 }
-                if ui.button(format!("{}  Mini-player", icon::MINI)).clicked() {
+                if ui.button(format!("{}  Mini-player", icon::MINI())).clicked() {
                     app.do_action(crate::shortcuts::Action::ToggleMiniPlayer, &ui.ctx().clone());
                     ui.close();
                 }
-                if ui.button(format!("{}  Playlist Transfer", icon::TRANSFER)).clicked() {
+                if ui.button(format!("{}  Playlist Transfer", icon::TRANSFER())).clicked() {
                     app.navigate(Page::Transfer);
                     ui.close();
                 }
-                if ui.button(format!("{}  Sync library now", icon::SYNC)).clicked() {
+                if ui.button(format!("{}  Sync library now", icon::SYNC())).clicked() {
                     app.sync_now(ProviderKind::Spotify, false);
                     app.sync_now(ProviderKind::YouTube, false);
                     ui.close();
@@ -104,15 +104,15 @@ fn sidebar(app: &mut AquaApp, ui: &mut Ui) {
         });
     });
     ui.add_space(8.0);
-    nav(app, ui, icon::HOME, "Home", Page::Home);
-    nav(app, ui, icon::SEARCH, "Search", Page::Search);
-    nav(app, ui, icon::LIBRARY, "Library", Page::Library);
-    nav(app, ui, icon::PLAYLIST, "Playlists", Page::Playlists);
-    nav(app, ui, icon::ARTIST, "Artists", Page::Artists);
-    nav(app, ui, icon::ALBUM, "Albums", Page::Albums);
-    nav(app, ui, icon::NOW, "Now Playing", Page::NowPlaying);
-    nav(app, ui, icon::QUEUE, "Queue", Page::Queue);
-    nav(app, ui, icon::TRANSFER, "Playlist Transfer", Page::Transfer);
+    nav(app, ui, icon::HOME(), "Home", Page::Home);
+    nav(app, ui, icon::SEARCH(), "Search", Page::Search);
+    nav(app, ui, icon::LIBRARY(), "Library", Page::Library);
+    nav(app, ui, icon::PLAYLIST(), "Playlists", Page::Playlists);
+    nav(app, ui, icon::ARTIST(), "Artists", Page::Artists);
+    nav(app, ui, icon::ALBUM(), "Albums", Page::Albums);
+    nav(app, ui, icon::NOW(), "Now Playing", Page::NowPlaying);
+    nav(app, ui, icon::QUEUE(), "Queue", Page::Queue);
+    nav(app, ui, icon::TRANSFER(), "Playlist Transfer", Page::Transfer);
     ui.add_space(10.0);
     ui.label(RichText::new("SERVICES").small().weak());
     ui.horizontal_wrapped(|ui| {
@@ -127,7 +127,7 @@ fn sidebar(app: &mut AquaApp, ui: &mut Ui) {
     });
     let dot = |ui: &mut Ui, on: bool, label: &str, tip: &str| {
         ui.horizontal(|ui| {
-            ui.label(RichText::new("●").color(if on { Color32::from_rgb(52, 211, 153) } else { Color32::GRAY }));
+            ui.label(RichText::new("⏺").color(if on { Color32::from_rgb(52, 211, 153) } else { Color32::GRAY }));
             ui.label(RichText::new(label).small()).on_hover_text(tip);
         });
     };
@@ -148,7 +148,7 @@ fn sidebar(app: &mut AquaApp, ui: &mut Ui) {
         ui.add_space(2.0);
         // permanently visible settings button + live RAM
         ui.horizontal(|ui| {
-            let r = ui.add(egui::Button::new(RichText::new(format!("{}  Settings", icon::SETTINGS)).size(15.0))).on_hover_text("Settings (Ctrl+,)");
+            let r = ui.add(egui::Button::new(RichText::new(format!("{}  Settings", icon::SETTINGS())).size(15.0))).on_hover_text("Settings (Ctrl+,)");
             if r.clicked() {
                 app.navigate(Page::Settings);
             }
@@ -206,26 +206,26 @@ fn player_bar(app: &mut AquaApp, ui: &mut Ui) {
                 let w = 5.0 * 34.0;
                 ui.add_space(((ui.available_width() - w) / 2.0).max(0.0));
                 let accent = app.accent();
-                let sh = ui.add(egui::Button::new(RichText::new(icon::SHUFFLE).color(if st.shuffle { accent } else { ui.visuals().weak_text_color() })).frame(false)).on_hover_text("Shuffle");
+                let sh = ui.add(egui::Button::new(RichText::new(icon::SHUFFLE()).color(if st.shuffle { accent } else { ui.visuals().weak_text_color() })).frame(false)).on_hover_text("Shuffle");
                 if sh.clicked() {
                     app.engine.send(Cmd::SetShuffle(!st.shuffle));
                     app.cfg.playback.shuffle = !st.shuffle;
                     app.mark_dirty();
                 }
-                if ui.add(egui::Button::new(RichText::new(icon::PREV).size(18.0)).frame(false)).on_hover_text("Previous").clicked() {
+                if ui.add(egui::Button::new(RichText::new(icon::PREV()).size(18.0)).frame(false)).on_hover_text("Previous").clicked() {
                     app.engine.send(Cmd::Prev);
                 }
-                let pi = if st.playing { icon::PAUSE } else { icon::PLAY };
+                let pi = if st.playing { icon::PAUSE() } else { icon::PLAY() };
                 if ui.add(egui::Button::new(RichText::new(pi).size(22.0).color(accent)).corner_radius(18)).on_hover_text("Play / Pause (Space)").clicked() {
                     app.engine.send(Cmd::Toggle);
                 }
-                if ui.add(egui::Button::new(RichText::new(icon::NEXT).size(18.0)).frame(false)).on_hover_text("Next").clicked() {
+                if ui.add(egui::Button::new(RichText::new(icon::NEXT()).size(18.0)).frame(false)).on_hover_text("Next").clicked() {
                     app.engine.send(Cmd::Next);
                 }
                 let (ri, rc) = match st.repeat {
-                    RepeatMode::Off => (icon::REPEAT, ui.visuals().weak_text_color()),
-                    RepeatMode::All => (icon::REPEAT, accent),
-                    RepeatMode::One => (icon::REPEAT_ONE, accent),
+                    RepeatMode::Off => (icon::REPEAT(), ui.visuals().weak_text_color()),
+                    RepeatMode::All => (icon::REPEAT(), accent),
+                    RepeatMode::One => (icon::REPEAT_ONE(), accent),
                 };
                 if ui.add(egui::Button::new(RichText::new(ri).color(rc)).frame(false)).on_hover_text("Repeat: off / all / one").clicked() {
                     let r = match st.repeat {
@@ -260,15 +260,15 @@ fn player_bar(app: &mut AquaApp, ui: &mut Ui) {
         // right: extras
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if app.cfg.active("quick_settings") {
-                ui.menu_button(icon::QUICK, |ui| quick_settings(app, ui)).response.on_hover_text("Quick settings");
+                ui.menu_button(icon::QUICK(), |ui| quick_settings(app, ui)).response.on_hover_text("Quick settings");
             }
-            if app.cfg.active("mini_player") && widgets::small_button(ui, icon::MINI, "Mini-player").clicked() {
+            if app.cfg.active("mini_player") && widgets::small_button(ui, icon::MINI(), "Mini-player").clicked() {
                 app.do_action(crate::shortcuts::Action::ToggleMiniPlayer, &ui.ctx().clone());
             }
-            if widgets::small_button(ui, icon::QUEUE, "Queue").clicked() {
+            if widgets::small_button(ui, icon::QUEUE(), "Queue").clicked() {
                 app.navigate(Page::Queue);
             }
-            if app.cfg.active("lyrics") && widgets::small_button(ui, icon::LYRICS, "Lyrics / Now Playing").clicked() {
+            if app.cfg.active("lyrics") && widgets::small_button(ui, icon::LYRICS(), "Lyrics / Now Playing").clicked() {
                 app.navigate(Page::NowPlaying);
             }
             let mut v = st.volume;
@@ -278,14 +278,14 @@ fn player_bar(app: &mut AquaApp, ui: &mut Ui) {
                 app.cfg.playback.volume = v;
                 app.mark_dirty();
             }
-            if widgets::small_button(ui, if st.muted { icon::MUTE } else { icon::VOL }, "Mute").clicked() {
+            if widgets::small_button(ui, if st.muted { icon::MUTE() } else { icon::VOL() }, "Mute").clicked() {
                 app.engine.send(Cmd::ToggleMute);
                 app.cfg.playback.muted = !st.muted;
                 app.mark_dirty();
             }
             if app.cfg.active("vis_in_bar") && ui.available_width() > 120.0 {
                 let accent = app.accent();
-                if let Some((bars, _)) = app.vis_data() {
+                if let Some((bars, _)) = app.vis_data().filter(|(b, _)| !b.is_empty()) {
                     let bars = bars.to_vec();
                     let (rect, _) = ui.allocate_exact_size(egui::vec2(90.0, 28.0), egui::Sense::hover());
                     let n = bars.len().min(24).max(1);
@@ -332,7 +332,7 @@ fn quick_settings(app: &mut AquaApp, ui: &mut Ui) {
 }
 
 fn back_button(app: &mut AquaApp, ui: &mut Ui) {
-    if !app.back.is_empty() && ui.button("← Back").clicked() {
+    if !app.back.is_empty() && ui.button("‹ Back").clicked() {
         app.go_back();
     }
 }
@@ -368,10 +368,11 @@ pub fn track_list(app: &mut AquaApp, ui: &mut Ui, tracks: &[Track], id_salt: &st
         for i in range {
             let t = &tracks[i];
             let playing = cur_key.as_deref() == Some(&t.key());
+            let w_all = ui.available_width();
             let r = ui
-                .horizontal(|ui| {
+                .allocate_ui_with_layout(egui::vec2(w_all, row_h), egui::Layout::left_to_right(egui::Align::Center), |ui| {
                     ui.set_height(row_h);
-                    ui.add_sized([36.0, row_h], egui::Label::new(RichText::new(if playing { icon::NOW.to_string() } else { (i + 1).to_string() }).weak()));
+                    ui.add_sized([36.0, row_h], egui::Label::new(RichText::new(if playing { icon::NOW().to_string() } else { (i + 1).to_string() }).weak()));
                     if thumbs {
                         let tex = app.artwork.lock().unwrap().get(&t.artwork_url, Kind::Cover);
                         widgets::artwork(ui, tex.as_ref(), row_h - 6.0, 4);
@@ -396,7 +397,7 @@ pub fn track_list(app: &mut AquaApp, ui: &mut Ui, tracks: &[Track], id_salt: &st
                         ui.label(RichText::new("E").small().weak()).on_hover_text("Explicit");
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.menu_button(icon::MORE, |ui| {
+                        ui.menu_button(icon::MORE(), |ui| {
                             if ui.button("Play next").clicked() {
                                 act = Some(RowAction::Next(t.clone()));
                                 ui.close();
@@ -405,7 +406,7 @@ pub fn track_list(app: &mut AquaApp, ui: &mut Ui, tracks: &[Track], id_salt: &st
                                 act = Some(RowAction::Queue(t.clone()));
                                 ui.close();
                             }
-                            if t.provider != ProviderKind::Local && ui.button(format!("{} Like", icon::HEART)).clicked() {
+                            if t.provider != ProviderKind::Local && ui.button(format!("{} Like", icon::HEART())).clicked() {
                                 act = Some(RowAction::Like(t.clone()));
                                 ui.close();
                             }
@@ -417,7 +418,7 @@ pub fn track_list(app: &mut AquaApp, ui: &mut Ui, tracks: &[Track], id_salt: &st
                                 act = Some(RowAction::Alternatives(t.clone()));
                                 ui.close();
                             }
-                            if t.provider != ProviderKind::Local && ui.button(format!("Open in browser {}", icon::EXTERNAL)).clicked() {
+                            if t.provider != ProviderKind::Local && ui.button(format!("Open in browser {}", icon::EXTERNAL())).clicked() {
                                 act = Some(RowAction::Open(t.clone()));
                                 ui.close();
                             }
@@ -516,7 +517,7 @@ fn home(app: &mut AquaApp, ui: &mut Ui) {
         widgets::section(ui, "Your playlists");
         let lists = all_playlists(app);
         if lists.is_empty() {
-            widgets::note(ui, "No playlists yet — sign in or sync from Settings → Library & Synchronization.");
+            widgets::note(ui, "No playlists yet — sign in or sync from Settings › Library & Synchronization.");
         }
         let mut open = None;
         ui.horizontal_wrapped(|ui| {
@@ -666,7 +667,7 @@ fn simple_tracks(app: &mut AquaApp, ui: &mut Ui, tracks: &[Track], max: usize) {
     let mut act = None;
     for (i, t) in tracks.iter().take(max).enumerate() {
         ui.horizontal(|ui| {
-            if ui.button(icon::PLAY).on_hover_text("Play").clicked() {
+            if ui.button(icon::PLAY()).on_hover_text("Play").clicked() {
                 act = Some(RowAction::Play(i));
             }
             if ui.button("+").on_hover_text("Add to queue").clicked() {
@@ -675,7 +676,7 @@ fn simple_tracks(app: &mut AquaApp, ui: &mut Ui, tracks: &[Track], max: usize) {
             widgets::provider_badge(ui, t.provider);
             ui.add(egui::Label::new(RichText::new(&t.title).strong()).truncate());
             ui.add(egui::Label::new(RichText::new(format!("{} · {}", t.artist_line(), fmt_ms(t.duration_ms))).weak()).truncate());
-            if t.provider != ProviderKind::Local && widgets::small_button(ui, "⇄", "Find this track on the other service").clicked() {
+            if t.provider != ProviderKind::Local && widgets::small_button(ui, "🔃", "Find this track on the other service").clicked() {
                 act = Some(RowAction::Alternatives(t.clone()));
             }
         });
@@ -712,7 +713,7 @@ fn library(app: &mut AquaApp, ui: &mut Ui) {
                 let busy = app.jobs.is_running(&format!("Sync {}", p.label())) || (p == ProviderKind::Local && app.local_scanning);
                 if busy {
                     ui.spinner();
-                } else if ui.button(format!("{} {}", icon::SYNC, if p == ProviderKind::Local { "Rescan" } else { "Sync Now" })).clicked() {
+                } else if ui.button(format!("{} {}", icon::SYNC(), if p == ProviderKind::Local { "Rescan" } else { "Sync Now" })).clicked() {
                     app.sync_now(p, false);
                 }
                 if p != ProviderKind::Local && ui.button("Import all playlists").on_hover_text("Cache every playlist locally and keep it in sync").clicked() {
@@ -733,7 +734,7 @@ fn library(app: &mut AquaApp, ui: &mut Ui) {
                 widgets::error(ui, &err);
             }
             if conflicts > 0 {
-                widgets::warn(ui, &format!("{conflicts} item(s) need review — Settings → Library & Synchronization"));
+                widgets::warn(ui, &format!("{conflicts} item(s) need review — Settings › Library & Synchronization"));
             }
         });
     }
@@ -830,7 +831,7 @@ fn artists_page(app: &mut AquaApp, ui: &mut Ui) {
         s.libs.values().flat_map(|l| l.artists.iter().cloned()).filter(|a| app.filter.allows(a.provider)).collect()
     };
     if artists.is_empty() {
-        widgets::note(ui, "No followed artists imported. Enable “Import followed artists” in Settings → Library & Synchronization and sync.");
+        widgets::note(ui, "No followed artists imported. Enable “Import followed artists” in Settings › Library & Synchronization and sync.");
     }
     let mut open = None;
     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
@@ -907,13 +908,13 @@ fn playlist_view(app: &mut AquaApp, ui: &mut Ui, p: ProviderKind, id: &str) {
     let tracks = app.playlist_tracks(p, id);
     ui.horizontal(|ui| {
         let ok = matches!(tracks, Some(Ok(_)));
-        if ui.add_enabled(ok, egui::Button::new(format!("{}  Play", icon::PLAY))).clicked() {
+        if ui.add_enabled(ok, egui::Button::new(format!("{}  Play", icon::PLAY()))).clicked() {
             if let Some(Ok(t)) = &tracks {
                 app.engine.send(Cmd::SetShuffle(false));
                 app.play(t.clone(), 0);
             }
         }
-        if ui.add_enabled(ok, egui::Button::new(format!("{}  Shuffle", icon::SHUFFLE))).clicked() {
+        if ui.add_enabled(ok, egui::Button::new(format!("{}  Shuffle", icon::SHUFFLE()))).clicked() {
             if let Some(Ok(t)) = &tracks {
                 app.engine.send(Cmd::SetShuffle(true));
                 let start = rand::random_range(0..t.len().max(1));
@@ -941,7 +942,7 @@ fn playlist_view(app: &mut AquaApp, ui: &mut Ui, p: ProviderKind, id: &str) {
                     }
                 }
             });
-            if ui.button(format!("{} Transfer…", icon::TRANSFER)).clicked() {
+            if ui.button(format!("{} Transfer…", icon::TRANSFER())).clicked() {
                 app.transfer.select_source(meta.clone(), t.clone());
                 app.navigate(Page::Transfer);
             }
@@ -1058,7 +1059,7 @@ fn album_view(app: &mut AquaApp, ui: &mut Ui, a: &Album) {
         }
         Some(Err(e)) => widgets::error(ui, &e),
         Some(Ok(t)) => {
-            if ui.button(format!("{}  Play album", icon::PLAY)).clicked() {
+            if ui.button(format!("{}  Play album", icon::PLAY())).clicked() {
                 app.play(t.clone(), 0);
             }
             if let Some(act) = track_list(app, ui, &t, &key) {
@@ -1140,7 +1141,7 @@ fn now_playing(app: &mut AquaApp, ui: &mut Ui) {
             });
             if st.external {
                 widgets::note(ui, "This YouTube track plays in YouTube Music in your browser — Google provides no API for third-party audio playback.");
-                if ui.button(format!("Open again {}", icon::EXTERNAL)).clicked() {
+                if ui.button(format!("Open again {}", icon::EXTERNAL())).clicked() {
                     if let Some(u) = t.web_url(app.cfg.services.youtube_open_in) {
                         let _ = open::that_detached(u);
                     }
@@ -1148,10 +1149,10 @@ fn now_playing(app: &mut AquaApp, ui: &mut Ui) {
             }
             ui.horizontal(|ui| {
                 ui.add_space((ui.available_width() / 2.0 - 120.0).max(0.0));
-                if t.provider != ProviderKind::Local && ui.button(format!("{} Like", icon::HEART)).clicked() {
+                if t.provider != ProviderKind::Local && ui.button(format!("{} Like", icon::HEART())).clicked() {
                     app.like(&t);
                 }
-                if t.provider != ProviderKind::Local && ui.button("⇄ Other version…").clicked() {
+                if t.provider != ProviderKind::Local && ui.button("🔃 Other version…").clicked() {
                     app.find_alternatives(&t);
                 }
                 if lyrics_on && app.cfg.active("lyrics_fullscreen") && ui.button("⛶ Fullscreen lyrics").clicked() {
@@ -1255,7 +1256,7 @@ pub fn lyrics_panel(app: &mut AquaApp, ui: &mut Ui, fullscreen: bool) {
             ui.spinner();
         }
         Some(Err(e)) => {
-            widgets::note(ui, &format!("Lyrics unavailable: {e}"));
+            ui.add(egui::Label::new(RichText::new(format!("Lyrics unavailable: {e}")).weak()).wrap());
             if ui.button("Retry").clicked() {
                 app.lyrics.key.clear();
                 app.lyrics.cache.clear();
@@ -1339,7 +1340,7 @@ fn queue(app: &mut AquaApp, ui: &mut Ui) {
             let t = &st.queue[i];
             let cur = st.queue_pos == Some(i);
             let r = ui.horizontal(|ui| {
-                ui.add_sized([36.0, 24.0], egui::Label::new(RichText::new(if cur { icon::NOW.to_string() } else { (i + 1).to_string() }).weak()));
+                ui.add_sized([36.0, 24.0], egui::Label::new(RichText::new(if cur { icon::NOW().to_string() } else { (i + 1).to_string() }).weak()));
                 widgets::provider_badge(ui, t.provider);
                 let mut title = RichText::new(format!("{} — {}", t.title, t.artist_line()));
                 if cur {
@@ -1350,10 +1351,10 @@ fn queue(app: &mut AquaApp, ui: &mut Ui) {
                     if widgets::small_button(ui, "✖", "Remove").clicked() {
                         cmd = Some(Cmd::Remove(i));
                     }
-                    if i + 1 < n && widgets::small_button(ui, "▼", "Move down").clicked() {
+                    if i + 1 < n && widgets::small_button(ui, "⏷", "Move down").clicked() {
                         cmd = Some(Cmd::Move(i, i + 1));
                     }
-                    if i > 0 && widgets::small_button(ui, "▲", "Move up").clicked() {
+                    if i > 0 && widgets::small_button(ui, "⏶", "Move up").clicked() {
                         cmd = Some(Cmd::Move(i, i - 1));
                     }
                     ui.label(RichText::new(fmt_ms(t.duration_ms)).monospace().weak());

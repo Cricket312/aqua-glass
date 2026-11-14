@@ -1,4 +1,4 @@
-//! The single audio output pipeline (cpal → WASAPI shared mode on Windows).
+//! The single audio output pipeline (cpal › WASAPI shared mode on Windows).
 //!
 //! Producers (librespot sink, local-file decoder) push interleaved stereo f32
 //! at the device rate into a bounded ring buffer. The real-time callback only

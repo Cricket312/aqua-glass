@@ -5,33 +5,45 @@ use crate::features::{FeatureDef, Impact};
 use crate::perf::Measurement;
 use eframe::egui::{self, Color32, RichText, Ui, Vec2};
 
+/// Icon glyphs, following the theme's icon style (solid / outline / text).
+#[allow(non_snake_case)]
 pub mod icon {
-    pub const HOME: &str = "🏠";
-    pub const SEARCH: &str = "🔍";
-    pub const LIBRARY: &str = "📚";
-    pub const PLAYLIST: &str = "☰";
-    pub const ARTIST: &str = "👤";
-    pub const ALBUM: &str = "💿";
-    pub const NOW: &str = "🎵";
-    pub const QUEUE: &str = "⏏";
-    pub const TRANSFER: &str = "⇄";
-    pub const SETTINGS: &str = "⚙";
-    pub const PLAY: &str = "▶";
-    pub const PAUSE: &str = "⏸";
-    pub const NEXT: &str = "⏭";
-    pub const PREV: &str = "⏮";
-    pub const SHUFFLE: &str = "🔀";
-    pub const REPEAT: &str = "🔁";
-    pub const REPEAT_ONE: &str = "🔂";
-    pub const VOL: &str = "🔊";
-    pub const MUTE: &str = "🔇";
-    pub const LYRICS: &str = "🗒";
-    pub const MINI: &str = "🗗";
-    pub const HEART: &str = "♥";
-    pub const MORE: &str = "⋯";
-    pub const QUICK: &str = "⚡";
-    pub const SYNC: &str = "🔄";
-    pub const EXTERNAL: &str = "↗";
+    use std::sync::atomic::{AtomicU8, Ordering};
+    /// 0 = solid, 1 = outline, 2 = text labels. Set by the theme engine.
+    pub static STYLE: AtomicU8 = AtomicU8::new(0);
+    fn pick(solid: &'static str, outline: &'static str, text: &'static str) -> &'static str {
+        match STYLE.load(Ordering::Relaxed) {
+            1 => outline,
+            2 => text,
+            _ => solid,
+        }
+    }
+    pub fn HOME() -> &'static str { pick("🏠", "☆", "Home") }
+    pub fn SEARCH() -> &'static str { pick("🔍", "🔎", "Find") }
+    pub fn LIBRARY() -> &'static str { pick("📚", "🗀", "Lib") }
+    pub fn PLAYLIST() -> &'static str { pick("☰", "⎘", "List") }
+    pub fn ARTIST() -> &'static str { pick("👤", "○", "Art") }
+    pub fn ALBUM() -> &'static str { pick("💿", "○", "Alb") }
+    pub fn NOW() -> &'static str { pick("🎵", "🎼", "Now") }
+    pub fn QUEUE() -> &'static str { pick("⏏", "⎘", "Queue") }
+    pub fn TRANSFER() -> &'static str { pick("🔃", "⟲", "Xfer") }
+    pub fn SETTINGS() -> &'static str { pick("⚙", "⛭", "Settings") }
+    pub fn PLAY() -> &'static str { pick("▶", "⏵", "Play") }
+    pub fn PAUSE() -> &'static str { pick("⏸", "⏸", "Pause") }
+    pub fn NEXT() -> &'static str { pick("⏭", "⏩", "Next") }
+    pub fn PREV() -> &'static str { pick("⏮", "⏪", "Prev") }
+    pub fn SHUFFLE() -> &'static str { pick("🔀", "🔀", "Shuffle") }
+    pub fn REPEAT() -> &'static str { pick("🔁", "⟲", "Repeat") }
+    pub fn REPEAT_ONE() -> &'static str { pick("🔂", "🔂", "Repeat 1") }
+    pub fn VOL() -> &'static str { pick("🔊", "🔉", "Vol") }
+    pub fn MUTE() -> &'static str { pick("🔇", "🔈", "Muted") }
+    pub fn LYRICS() -> &'static str { pick("🎤", "🎼", "Lyrics") }
+    pub fn MINI() -> &'static str { pick("🗗", "🖼", "Mini") }
+    pub fn HEART() -> &'static str { pick("♥", "♡", "Like") }
+    pub fn MORE() -> &'static str { pick("…", "…", "More") }
+    pub fn QUICK() -> &'static str { pick("⚡", "⚡", "Quick") }
+    pub fn SYNC() -> &'static str { pick("🔄", "⟲", "Sync") }
+    pub fn EXTERNAL() -> &'static str { pick("↗", "↗", "Open") }
 }
 
 pub fn provider_color(p: ProviderKind) -> Color32 {
@@ -119,7 +131,7 @@ pub fn artwork(ui: &mut Ui, tex: Option<&egui::TextureHandle>, size: f32, roundi
             let (rect, resp) = ui.allocate_exact_size(sz, egui::Sense::click());
             let v = ui.visuals();
             ui.painter().rect_filled(rect, rounding, v.faint_bg_color);
-            ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, icon::NOW, egui::FontId::proportional(size * 0.4), v.weak_text_color());
+            ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, icon::NOW(), egui::FontId::proportional(size * 0.4), v.weak_text_color());
             resp
         }
     }

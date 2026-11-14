@@ -224,7 +224,6 @@ pub struct LyricsCfg {
     pub line_spacing: f32,
     pub bg_opacity: f32,
     pub offset_ms: i32,
-    pub scroll_speed: f32,
 }
 impl Default for LyricsCfg {
     fn default() -> Self {
@@ -237,7 +236,6 @@ impl Default for LyricsCfg {
             line_spacing: 10.0,
             bg_opacity: 0.0,
             offset_ms: 0,
-            scroll_speed: 1.0,
         }
     }
 }
