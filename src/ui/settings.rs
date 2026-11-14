@@ -365,7 +365,7 @@ fn themes(app: &mut AquaApp, ui: &mut Ui) {
     let before = app.edit_theme.clone();
     let t = &mut app.edit_theme;
     egui::Grid::new("theme_grid").num_columns(2).spacing([16.0, 6.0]).show(ui, |ui| {
-        let mut color = |ui: &mut Ui, label: &str, c: &mut [u8; 3]| {
+        let color = |ui: &mut Ui, label: &str, c: &mut [u8; 3]| {
             ui.label(label);
             ui.color_edit_button_srgb(c);
             ui.end_row();
@@ -381,7 +381,7 @@ fn themes(app: &mut AquaApp, ui: &mut Ui) {
         ui.label("Dark theme");
         ui.checkbox(&mut t.dark, "");
         ui.end_row();
-        let mut s = |ui: &mut Ui, label: &str, v: &mut f32, r: std::ops::RangeInclusive<f32>| {
+        let s = |ui: &mut Ui, label: &str, v: &mut f32, r: std::ops::RangeInclusive<f32>| {
             ui.label(label);
             ui.add(egui::Slider::new(v, r));
             ui.end_row();

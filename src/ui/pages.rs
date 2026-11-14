@@ -1,11 +1,10 @@
 //! Application shell and content pages.
 
 use super::widgets::{self, icon};
-use super::{AquaApp, Confirm, Filter, Page};
+use super::{AquaApp, Confirm, Page};
 use crate::artwork::Kind;
-use crate::audio::engine::{Cmd, SpotifyStatus};
-use crate::config::{PlayerBarLayout, ProviderKind, RepeatMode};
-use crate::library::LIKED_ID;
+use crate::audio::engine::Cmd;
+use crate::config::ProviderKind;
 use crate::model::*;
 use crate::util::fmt_ms;
 use eframe::egui::{self, Color32, RichText, Ui};
@@ -150,7 +149,7 @@ pub fn handle_row_action(app: &mut AquaApp, tracks: &[Track], a: RowAction) {
 fn card(app: &mut AquaApp, ui: &mut Ui, art: &str, title: &str, sub: &str, p: ProviderKind) -> egui::Response {
     let (_, w) = widgets::grid_metrics(ui.available_width().max(400.0));
     let tex = if app.cfg.active("artwork_in_lists") { app.artwork.lock().unwrap().get(art, Kind::Cover) } else { None };
-    let o = widgets::media_card(ui, tex.as_ref(), title, sub, Some(p), w.min(200.0), false, app.accent());
+    let o = widgets::media_card(ui, tex.as_ref(), title, sub, Some(p), w.min(200.0), widgets::CardShape::Square, app.accent());
     let (_, resp) = ui.allocate_exact_size(egui::vec2(0.0, 0.0), egui::Sense::hover());
     if o.open || o.play {
         // synthesize a click response for callers

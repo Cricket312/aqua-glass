@@ -275,13 +275,25 @@ pub fn section_header(ui: &mut Ui, title: &str, show_all: bool) -> bool {
     clicked
 }
 
-/// Number of cards per row and card width for the available width (≈4–6 per row).
+/// Number of cards per row and card width for the available width (≈5–6 per row).
 pub fn grid_metrics(avail: f32) -> (usize, f32) {
-    let gap = 14.0;
+    grid_metrics_min(avail, 140.0)
+}
+
+pub fn grid_metrics_min(avail: f32, min_w: f32) -> (usize, f32) {
+    let gap = 16.0;
     let avail = avail - 18.0; // leave room for the scrollbar
-    let n = ((avail + gap) / (170.0 + gap)).floor().clamp(2.0, 8.0) as usize;
+    let n = ((avail + gap) / (min_w + gap)).floor().clamp(2.0, 9.0) as usize;
     let w = ((avail - gap * (n as f32 - 1.0)) / n as f32).floor();
     (n, w)
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum CardShape {
+    Square,
+    Round,
+    /// Landscape artwork (16:10), as in "Made For You".
+    Wide,
 }
 
 pub struct CardOut {
@@ -289,53 +301,55 @@ pub struct CardOut {
     pub play: bool,
 }
 
-/// Album/playlist card: artwork, name, subtitle, hover highlight and a play button.
-pub fn media_card(ui: &mut Ui, tex: Option<&egui::TextureHandle>, title: &str, subtitle: &str, provider: Option<ProviderKind>, w: f32, round_art: bool, accent: Color32) -> CardOut {
-    let pad = 10.0;
-    let art = w - pad * 2.0;
-    let h = art + pad * 2.0 + 42.0;
+/// Art-first card: artwork, name, subtitle; a subtle highlight and a seafoam play
+/// button on hover/focus. No box around it, like the reference design.
+pub fn media_card(ui: &mut Ui, tex: Option<&egui::TextureHandle>, title: &str, subtitle: &str, provider: Option<ProviderKind>, w: f32, shape: CardShape, accent: Color32) -> CardOut {
+    let art_h = match shape {
+        CardShape::Wide => (w * 0.62).round(),
+        _ => w,
+    };
+    let h = art_h + 46.0;
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, h), egui::Sense::click());
     let hovered = resp.hovered() || resp.has_focus();
     let v = ui.visuals().clone();
-    let fill = if hovered { v.widgets.inactive.bg_fill } else { v.faint_bg_color };
-    let p = ui.painter_at(rect);
-    p.rect_filled(rect, 8, fill);
-    let art_rect = egui::Rect::from_min_size(rect.min + egui::vec2(pad, pad), egui::vec2(art, art));
-    let ar = if round_art { (art / 2.0) as u8 } else { 6 };
+    let p = ui.painter_at(rect.expand(6.0));
+    if hovered {
+        p.rect_filled(rect.expand(5.0), 10, v.widgets.inactive.bg_fill.gamma_multiply(0.55));
+    }
+    let art_rect = egui::Rect::from_min_size(rect.min, egui::vec2(w, art_h));
+    let ar = if shape == CardShape::Round { (w / 2.0) as u8 } else { 8 };
     match tex {
         Some(t) => {
+            // cover-fit crop
             let ts = t.size_vec2();
-            let s = (art / ts.x).max(art / ts.y);
-            let uv_w = (art / (ts.x * s)).min(1.0);
-            let uv_h = (art / (ts.y * s)).min(1.0);
-            let uv = egui::Rect::from_center_size(egui::pos2(0.5, 0.5), egui::vec2(uv_w, uv_h));
+            let s = (w / ts.x).max(art_h / ts.y);
+            let uv = egui::Rect::from_center_size(egui::pos2(0.5, 0.5), egui::vec2((w / (ts.x * s)).min(1.0), (art_h / (ts.y * s)).min(1.0)));
             egui::Image::new(egui::load::SizedTexture::new(t.id(), art_rect.size())).uv(uv).corner_radius(ar).paint_at(ui, art_rect);
         }
         None => {
             p.rect_filled(art_rect, ar, v.widgets.inactive.bg_fill);
-            p.text(art_rect.center(), egui::Align2::CENTER_CENTER, icon::NOW(), egui::FontId::proportional((art * 0.3).min(48.0)), v.weak_text_color());
+            p.text(art_rect.center(), egui::Align2::CENTER_CENTER, icon::NOW(), egui::FontId::proportional((art_h * 0.3).min(48.0)), v.weak_text_color());
         }
     }
-    let ty = art_rect.bottom() + 8.0;
-    let title_g = ui.painter().layout(title.to_string(), egui::FontId::proportional(14.0), v.strong_text_color(), f32::INFINITY);
-    let sub_g = ui.painter().layout(subtitle.to_string(), egui::FontId::proportional(12.0), v.weak_text_color(), f32::INFINITY);
-    let clip = egui::Rect::from_min_max(egui::pos2(rect.left() + pad, ty), egui::pos2(rect.right() - pad, rect.bottom()));
+    let ty = art_rect.bottom() + 7.0;
+    let clip = egui::Rect::from_min_max(egui::pos2(rect.left(), ty), egui::pos2(rect.right(), rect.bottom()));
     let pc = ui.painter_at(clip);
-    pc.galley(egui::pos2(rect.left() + pad, ty), title_g, Color32::WHITE);
-    let mut sx = rect.left() + pad;
+    let title_g = ui.painter().layout_no_wrap(title.to_string(), egui::FontId::proportional(14.0), v.strong_text_color());
+    pc.galley(egui::pos2(rect.left(), ty), title_g, Color32::WHITE);
+    let mut sx = rect.left();
     if let Some(pk) = provider {
         let c = provider_color(pk);
-        let r = egui::Rect::from_min_size(egui::pos2(sx, ty + 22.0), egui::vec2(18.0, 13.0));
+        let r = egui::Rect::from_min_size(egui::pos2(sx, ty + 21.0), egui::vec2(18.0, 13.0));
         pc.rect_filled(r, 3, c.gamma_multiply(0.18));
         pc.text(r.center(), egui::Align2::CENTER_CENTER, pk.short(), egui::FontId::proportional(8.5), c);
         sx += 22.0;
     }
-    pc.galley(egui::pos2(sx, ty + 21.0), sub_g, Color32::WHITE);
-    // play button on hover / focus
+    let sub_g = ui.painter().layout_no_wrap(subtitle.to_string(), egui::FontId::proportional(12.0), v.weak_text_color());
+    pc.galley(egui::pos2(sx, ty + 20.0), sub_g, Color32::WHITE);
     let mut play = false;
     if hovered {
-        let c = art_rect.right_bottom() - egui::vec2(22.0, 22.0);
-        let br = egui::Rect::from_center_size(c, egui::vec2(34.0, 34.0));
+        let c = art_rect.right_bottom() - egui::vec2(24.0, 24.0);
+        let br = egui::Rect::from_center_size(c, egui::vec2(36.0, 36.0));
         let pr = ui.interact(br, resp.id.with("play"), egui::Sense::click());
         p.circle_filled(c, 17.0, if pr.hovered() { lerp_color(accent, Color32::WHITE, 0.15) } else { accent });
         p.text(c + egui::vec2(1.0, 0.0), egui::Align2::CENTER_CENTER, icon::PLAY(), egui::FontId::proportional(14.0), v.extreme_bg_color);
@@ -343,4 +357,27 @@ pub fn media_card(ui: &mut Ui, tex: Option<&egui::TextureHandle>, title: &str, s
     }
     let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
     CardOut { open: resp.clicked() && !play, play: play || (resp.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))) }
+}
+
+/// Fill a rounded rectangle with a horizontal gradient (`color_at(t)`, t = 0 left .. 1 right).
+pub fn gradient_rounded(p: &egui::Painter, rect: egui::Rect, radius: f32, color_at: impl Fn(f32) -> Color32) {
+    let mut pts = Vec::new();
+    egui::epaint::tessellator::path::rounded_rectangle(&mut pts, egui::epaint::RoundedRect::new(rect, radius));
+    if pts.len() < 3 {
+        return;
+    }
+    let mut mesh = egui::Mesh::default();
+    let tx = |x: f32| ((x - rect.left()) / rect.width().max(1.0)).clamp(0.0, 1.0);
+    // centre-row fan: one centre vertex per horizontal band keeps the gradient linear
+    let c = rect.center();
+    mesh.colored_vertex(c, color_at(0.5));
+    for q in &pts {
+        mesh.colored_vertex(*q, color_at(tx(q.x)));
+    }
+    let n = pts.len() as u32;
+    for i in 0..n {
+        mesh.add_triangle(0, 1 + i, 1 + (i + 1) % n);
+    }
+    // left/right halves: add strips through the vertical centre line for a smoother ramp
+    p.add(egui::Shape::mesh(mesh));
 }

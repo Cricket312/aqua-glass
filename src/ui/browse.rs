@@ -22,6 +22,7 @@ enum CardAct {
 
 #[derive(Clone)]
 struct CardData {
+    shape: widgets::CardShape,
     art: String,
     title: String,
     sub: String,
@@ -51,7 +52,8 @@ fn card_row(app: &mut AquaApp, ui: &mut Ui, title: &str, cards: &[CardData], sho
     if cards.is_empty() {
         return;
     }
-    let (n, w) = widgets::grid_metrics(ui.available_width());
+    let wide = cards.first().is_some_and(|c| c.shape == widgets::CardShape::Wide);
+    let (n, w) = widgets::grid_metrics_min(ui.available_width(), if wide { 170.0 } else { 140.0 });
     if widgets::section_header(ui, title, show_all.is_some() && cards.len() > n) {
         if let Some(p) = show_all {
             app.navigate(p);
@@ -61,11 +63,10 @@ fn card_row(app: &mut AquaApp, ui: &mut Ui, title: &str, cards: &[CardData], sho
     let thumbs = app.cfg.active("artwork_in_lists");
     let mut act = None;
     ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 14.0;
+        ui.spacing_mut().item_spacing.x = 16.0;
         for c in cards.iter().take(n) {
             let tex = if thumbs { app.artwork.lock().unwrap().get(&c.art, Kind::Cover) } else { None };
-            let round = matches!(c.open, CardAct::Radio(_));
-            let o = widgets::media_card(ui, tex.as_ref(), &c.title, &c.sub, c.provider, w, round, accent);
+            let o = widgets::media_card(ui, tex.as_ref(), &c.title, &c.sub, c.provider, w, c.shape, accent);
             if o.play {
                 act = Some(c.play.clone().unwrap_or(c.open.clone()));
             } else if o.open {
@@ -78,9 +79,111 @@ fn card_row(app: &mut AquaApp, ui: &mut Ui, title: &str, cards: &[CardData], sho
     }
 }
 
+struct Featured {
+    kind: &'static str,
+    title: String,
+    desc: String,
+    art: String,
+    open: CardAct,
+    play: Option<CardAct>,
+    playlist: Option<(ProviderKind, String)>,
+}
+
+/// Hero banner: artwork background darkened by a left-to-right gradient, title,
+/// description, Play pill and pager dots (no auto-rotation → no repaints).
+fn featured_banner(app: &mut AquaApp, ui: &mut Ui, items: &[Featured]) {
+    let idx = app.featured_idx.min(items.len() - 1);
+    let f = &items[idx];
+    let w = ui.available_width() - 18.0;
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, 176.0), egui::Sense::click());
+    let v = ui.visuals().clone();
+    let theme = app.current_theme().clone();
+    let p = ui.painter_at(rect);
+    let thumbs = app.cfg.active("artwork_in_lists");
+    // blurred cover as the backdrop (computed small, cheap) + the sharp cover on the right
+    let bg_tex = if thumbs { app.artwork.lock().unwrap().get(&f.art, Kind::Background { px: 256, blur: 18 }) } else { None };
+    let cover = if thumbs { app.artwork.lock().unwrap().get(&f.art, Kind::Cover) } else { None };
+    match bg_tex {
+        Some(t) => {
+            let ts = t.size_vec2();
+            let s = (rect.width() / ts.x).max(rect.height() / ts.y);
+            let uv = egui::Rect::from_center_size(egui::pos2(0.5, 0.5), egui::vec2((rect.width() / (ts.x * s)).min(1.0), (rect.height() / (ts.y * s)).min(1.0)));
+            egui::Image::new(egui::load::SizedTexture::new(t.id(), rect.size())).uv(uv).corner_radius(16).paint_at(ui, rect);
+        }
+        None => {
+            p.rect_filled(rect, 16, crate::theme::c(theme.surface));
+        }
+    }
+    let bg = crate::theme::c(theme.panel);
+    widgets::gradient_rounded(&p, rect, 16.0, |t| bg.gamma_multiply((0.95 - t * 0.6).clamp(0.3, 0.95)));
+    p.rect_stroke(rect, 16, egui::Stroke::new(1.0, v.widgets.noninteractive.bg_stroke.color), egui::StrokeKind::Inside);
+    if let Some(t) = &cover {
+        let side = rect.height() - 36.0;
+        let r = egui::Rect::from_min_size(egui::pos2(rect.right() - side - 28.0, rect.top() + 18.0), egui::vec2(side, side));
+        egui::Image::new(egui::load::SizedTexture::new(t.id(), r.size())).corner_radius(10).paint_at(ui, r);
+    }
+    let text_rect = egui::Rect::from_min_max(rect.min + egui::vec2(28.0, 22.0), egui::pos2(rect.right() - rect.height() - 30.0, rect.bottom() - 22.0));
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(text_rect).layout(egui::Layout::top_down(egui::Align::Min)));
+    let ui2 = &mut child;
+    ui2.label(RichText::new(f.kind).size(11.0).color(v.text_color()));
+    ui2.add(egui::Label::new(RichText::new(&f.title).size(30.0).strong().color(v.strong_text_color())).truncate());
+    ui2.add(egui::Label::new(RichText::new(&f.desc).size(14.0).color(v.text_color())).truncate());
+    ui2.add_space(10.0);
+    let mut act = None;
+    ui2.horizontal(|ui| {
+        let accent = app.accent();
+        let b = egui::Button::new(RichText::new(format!("{}  Play", icon::PLAY())).size(15.0).strong().color(v.extreme_bg_color)).fill(accent).corner_radius(18).min_size(egui::vec2(96.0, 36.0));
+        if ui.add(b).clicked() {
+            act = f.play.clone().or(Some(f.open.clone()));
+        }
+        if let Some((pk, id)) = &f.playlist {
+            let imported = app.library.lock().unwrap().lib(*pk).playlist(id).is_some_and(|e| e.imported);
+            if *pk != ProviderKind::Local && !imported && ui.add(egui::Button::new(RichText::new("♡").size(17.0)).frame(false)).on_hover_text("Import (keep a synced copy)").clicked() {
+                {
+                    let mut s = app.library.lock().unwrap();
+                    if let Some(e) = s.lib(*pk).playlist_mut(id) {
+                        e.imported = true;
+                        e.meta.snapshot.clear();
+                    }
+                    s.save_index(*pk);
+                }
+                app.sync_now(*pk, false);
+            }
+        }
+        if ui.add(egui::Button::new(RichText::new("…").size(17.0)).frame(false)).on_hover_text("Open").clicked() {
+            act = Some(f.open.clone());
+        }
+    });
+    // pager dots
+    if items.len() > 1 {
+        let y = rect.bottom() - 14.0;
+        let cx = text_rect.center().x;
+        for i in 0..items.len() {
+            let c = egui::pos2(cx - (items.len() as f32 - 1.0) * 13.0 + i as f32 * 26.0, y);
+            let r = ui.interact(egui::Rect::from_center_size(c, egui::vec2(18.0, 18.0)), resp.id.with(("dot", i)), egui::Sense::click());
+            p.circle_filled(c, 4.0, if i == idx { app.accent() } else { v.weak_text_color().gamma_multiply(0.6) });
+            if r.clicked() {
+                app.featured_idx = i;
+            }
+        }
+    }
+    if let Some(a) = act {
+        if let (CardAct::OpenPlaylist(pk, id), true) = (&a, f.play.is_some()) {
+            // play the playlist directly
+            if let Some(Ok(t)) = app.playlist_tracks(*pk, id) {
+                app.play_list(t, 0, PlayFrom::Other);
+                return;
+            }
+        }
+        run(app, a);
+    } else if resp.clicked() {
+        run(app, f.open.clone());
+    }
+}
+
 fn pl_card(p: &Playlist) -> CardData {
     let sub = if p.is_liked { format!("{} songs", p.track_count) } else if p.owner.is_empty() { format!("{} songs", p.track_count) } else { format!("By {}", p.owner) };
-    CardData { art: p.artwork_url.clone(), title: p.name.clone(), sub, provider: Some(p.provider), open: CardAct::OpenPlaylist(p.provider, p.id.clone()), play: None }
+    CardData { shape: widgets::CardShape::Square, art: p.artwork_url.clone(), title: p.name.clone(), sub, provider: Some(p.provider), open: CardAct::OpenPlaylist(p.provider, p.id.clone()), play: None }
 }
 
 pub fn home(app: &mut AquaApp, ui: &mut Ui) {
@@ -114,7 +217,7 @@ pub fn home(app: &mut AquaApp, ui: &mut Ui) {
 
     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         ui.add_space(4.0);
-        ui.label(RichText::new(greet).size(24.0).strong());
+        ui.label(RichText::new(greet).size(30.0).strong());
         if !any_account && !has_local {
             ui.add_space(8.0);
             widgets::card(ui, Some("Connect your music"), |ui| {
@@ -131,12 +234,24 @@ pub fn home(app: &mut AquaApp, ui: &mut Ui) {
                 widgets::note(ui, "Spotify playback requires Premium. Import, sync and transfer work with any account.");
             });
         }
-        // quick tiles: favourite collections, two columns
         let mut fav: Vec<Playlist> = lists.iter().filter(|(p, _, _)| p.is_liked).map(|x| x.0.clone()).collect();
         fav.extend(lists.iter().filter(|(p, _, _)| !p.is_liked && p.owned_by_user).map(|x| x.0.clone()));
-        if !fav.is_empty() {
-            ui.add_space(10.0);
-            quick_tiles(app, ui, &fav.iter().take(6).cloned().collect::<Vec<_>>());
+        // featured banner: up to three real items from your library
+        let mut featured: Vec<Featured> = Vec::new();
+        let mut by_sync: Vec<&(Playlist, bool, i64)> = lists.iter().filter(|(p, _, _)| !p.is_liked && !p.artwork_url.is_empty()).collect();
+        by_sync.sort_by_key(|x| -x.2);
+        for (p, _, _) in by_sync.into_iter().take(2) {
+            let desc = if p.description.trim().is_empty() { format!("{} songs · {}", p.track_count, p.provider.label()) } else { p.description.clone() };
+            featured.push(Featured { kind: "FEATURED PLAYLIST", title: p.name.clone(), desc, art: p.artwork_url.clone(), open: CardAct::OpenPlaylist(p.provider, p.id.clone()), play: Some(CardAct::OpenPlaylist(p.provider, p.id.clone())), playlist: Some((p.provider, p.id.clone())) });
+        }
+        if app.radio.is_some() {
+            if let Some((a, t, _)) = top.first() {
+                featured.push(Featured { kind: "YOUR TOP MIX", title: format!("{a} Mix"), desc: "Similarity Radio from the artist you play most.".into(), art: t.artwork_url.clone(), open: CardAct::Radio(t.clone()), play: Some(CardAct::Radio(t.clone())), playlist: None });
+            }
+        }
+        if !featured.is_empty() {
+            ui.add_space(12.0);
+            featured_banner(app, ui, &featured);
         }
         let rp: Vec<CardData> = recent
             .iter()
@@ -144,31 +259,31 @@ pub fn home(app: &mut AquaApp, ui: &mut Ui) {
             .scan(std::collections::HashSet::new(), |seen, t| Some(if seen.insert(t.key()) { Some(t.clone()) } else { None }))
             .flatten()
             .take(12)
-            .map(|t| CardData { art: t.artwork_url.clone(), title: t.title.clone(), sub: t.artist_line(), provider: Some(t.provider), open: CardAct::PlayTracks(vec![t.clone()], 0), play: None })
+            .map(|t| CardData { shape: widgets::CardShape::Square, art: t.artwork_url.clone(), title: t.title.clone(), sub: t.artist_line(), provider: Some(t.provider), open: CardAct::PlayTracks(vec![t.clone()], 0), play: None })
             .collect();
         card_row(app, ui, "Recently Played", &rp, None);
         if fav.len() > 6 {
             let c: Vec<CardData> = fav.iter().skip(6).map(pl_card).collect();
             card_row(app, ui, "Favorite Playlists", &c, Some(Page::Playlists));
         }
-        let made: Vec<CardData> = lists.iter().filter(|(p, _, _)| p.provider == ProviderKind::Spotify && p.owner.eq_ignore_ascii_case("spotify")).map(|x| pl_card(&x.0)).collect();
+        let made: Vec<CardData> = lists.iter().filter(|(p, _, _)| p.provider == ProviderKind::Spotify && p.owner.eq_ignore_ascii_case("spotify")).map(|x| CardData { shape: widgets::CardShape::Wide, ..pl_card(&x.0) }).collect();
         card_row(app, ui, "Made For You", &made, Some(Page::Playlists));
         let added: Vec<CardData> = albums
             .iter()
-            .map(|a| CardData { art: a.artwork_url.clone(), title: a.name.clone(), sub: a.artists.join(", "), provider: Some(a.provider), open: CardAct::OpenAlbum(a.clone()), play: None })
+            .map(|a| CardData { shape: widgets::CardShape::Square, art: a.artwork_url.clone(), title: a.name.clone(), sub: a.artists.join(", "), provider: Some(a.provider), open: CardAct::OpenAlbum(a.clone()), play: None })
             .collect();
         card_row(app, ui, "Recently Added", &added, Some(Page::Albums));
         if app.radio.is_some() {
             let mixes: Vec<CardData> = top
                 .iter()
-                .map(|(a, t, n)| CardData { art: t.artwork_url.clone(), title: format!("{a} Mix"), sub: format!("Similarity Radio · {n} plays"), provider: None, open: CardAct::Radio(t.clone()), play: None })
+                .map(|(a, t, n)| CardData { shape: widgets::CardShape::Wide, art: t.artwork_url.clone(), title: format!("{a} Mix"), sub: format!("Similarity Radio · {n} plays"), provider: None, open: CardAct::Radio(t.clone()), play: None })
                 .collect();
             card_row(app, ui, "Your Top Mixes", &mixes, Some(Page::Discover));
             let disc: Vec<CardData> = recent
                 .iter()
                 .filter(|t| !top.iter().any(|(_, x, _)| x.key() == t.key()))
                 .take(8)
-                .map(|t| CardData { art: t.artwork_url.clone(), title: format!("Like “{}”", t.title), sub: format!("Discover from {}", t.artist_line()), provider: None, open: CardAct::Radio(t.clone()), play: None })
+                .map(|t| CardData { shape: widgets::CardShape::Square, art: t.artwork_url.clone(), title: format!("Like “{}”", t.title), sub: format!("Discover from {}", t.artist_line()), provider: None, open: CardAct::Radio(t.clone()), play: None })
                 .collect();
             card_row(app, ui, "Discover New Music", &disc, Some(Page::Discover));
         }
@@ -180,47 +295,6 @@ pub fn home(app: &mut AquaApp, ui: &mut Ui) {
         card_row(app, ui, "Local Music", &local, Some(Page::Library));
         ui.add_space(20.0);
     });
-}
-
-/// Compact two-column tiles (artwork + name) like the top of a streaming home page.
-fn quick_tiles(app: &mut AquaApp, ui: &mut Ui, items: &[Playlist]) {
-    let cols = if ui.available_width() > 900.0 { 3 } else { 2 };
-    let gap = 10.0;
-    let w = ((ui.available_width() - gap * (cols as f32 - 1.0)) / cols as f32).floor();
-    let mut open = None;
-    let accent = app.accent();
-    for row in items.chunks(cols) {
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = gap;
-            for p in row {
-                let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, 52.0), egui::Sense::click());
-                let v = ui.visuals();
-                let fill = if resp.hovered() { v.widgets.inactive.bg_fill } else { v.faint_bg_color };
-                ui.painter().rect_filled(rect, 6, fill);
-                let art = egui::Rect::from_min_size(rect.min, egui::vec2(52.0, 52.0));
-                let tex = if app.cfg.active("artwork_in_lists") { app.artwork.lock().unwrap().get(&p.artwork_url, Kind::Cover) } else { None };
-                match tex {
-                    Some(t) => {
-                        egui::Image::new(egui::load::SizedTexture::new(t.id(), art.size())).corner_radius(egui::CornerRadius { nw: 6, sw: 6, ne: 0, se: 0 }).paint_at(ui, art);
-                    }
-                    None => {
-                        let c = if p.is_liked { accent.gamma_multiply(0.5) } else { v.widgets.inactive.bg_fill };
-                        ui.painter().rect_filled(art, egui::CornerRadius { nw: 6, sw: 6, ne: 0, se: 0 }, c);
-                        ui.painter().text(art.center(), egui::Align2::CENTER_CENTER, if p.is_liked { "♥" } else { icon::NOW() }, egui::FontId::proportional(18.0), v.strong_text_color());
-                    }
-                }
-                let clip = egui::Rect::from_min_max(egui::pos2(art.right() + 12.0, rect.top()), egui::pos2(rect.right() - 8.0, rect.bottom()));
-                ui.painter_at(clip).text(egui::pos2(clip.left(), rect.center().y), egui::Align2::LEFT_CENTER, &p.name, egui::FontId::proportional(14.0), v.strong_text_color());
-                if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
-                    open = Some(Page::Playlist(p.provider, p.id.clone()));
-                }
-            }
-        });
-        ui.add_space(gap * 0.6);
-    }
-    if let Some(p) = open {
-        app.navigate(p);
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -292,7 +366,7 @@ pub fn search(app: &mut AquaApp, ui: &mut Ui) {
         }
         let ac: Vec<CardData> = artists
             .iter()
-            .map(|a| CardData { art: a.artwork_url.clone(), title: a.name.clone(), sub: "Artist".into(), provider: Some(a.provider), open: CardAct::OpenAlbum(Album::default()), play: None })
+            .map(|a| CardData { shape: widgets::CardShape::Square, art: a.artwork_url.clone(), title: a.name.clone(), sub: "Artist".into(), provider: Some(a.provider), open: CardAct::OpenAlbum(Album::default()), play: None })
             .collect();
         // artists open their page (handled separately to keep CardAct simple)
         if !ac.is_empty() {
@@ -303,7 +377,7 @@ pub fn search(app: &mut AquaApp, ui: &mut Ui) {
                 ui.spacing_mut().item_spacing.x = 14.0;
                 for (a, c) in artists.iter().zip(ac.iter()).take(n) {
                     let tex = if app.cfg.active("artwork_in_lists") { app.artwork.lock().unwrap().get(&c.art, Kind::Cover) } else { None };
-                    let o = widgets::media_card(ui, tex.as_ref(), &c.title, &c.sub, c.provider, w, true, app.accent());
+                    let o = widgets::media_card(ui, tex.as_ref(), &c.title, &c.sub, c.provider, w, widgets::CardShape::Round, app.accent());
                     if o.open || o.play {
                         open = Some(a.clone());
                     }
@@ -315,7 +389,7 @@ pub fn search(app: &mut AquaApp, ui: &mut Ui) {
         }
         let alc: Vec<CardData> = albums
             .iter()
-            .map(|a| CardData { art: a.artwork_url.clone(), title: a.name.clone(), sub: a.artists.join(", "), provider: Some(a.provider), open: CardAct::OpenAlbum(a.clone()), play: None })
+            .map(|a| CardData { shape: widgets::CardShape::Square, art: a.artwork_url.clone(), title: a.name.clone(), sub: a.artists.join(", "), provider: Some(a.provider), open: CardAct::OpenAlbum(a.clone()), play: None })
             .collect();
         card_row(app, ui, "Albums", &alc, None);
         let plc: Vec<CardData> = playlists.iter().map(pl_card).collect();
@@ -422,13 +496,14 @@ pub fn discover(app: &mut AquaApp, ui: &mut Ui) {
         let top = app.history.lock().unwrap().top_artists(12);
         let mixes: Vec<CardData> = top
             .iter()
-            .map(|(a, t, n)| CardData { art: t.artwork_url.clone(), title: format!("{a} Mix"), sub: format!("{n} plays"), provider: None, open: CardAct::Radio(t.clone()), play: None })
+            .map(|(a, t, n)| CardData { shape: widgets::CardShape::Square, art: t.artwork_url.clone(), title: format!("{a} Mix"), sub: format!("{n} plays"), provider: None, open: CardAct::Radio(t.clone()), play: None })
             .collect();
+        let mixes: Vec<CardData> = mixes.into_iter().map(|c| CardData { shape: widgets::CardShape::Wide, ..c }).collect();
         card_row(app, ui, "Your Top Mixes", &mixes, None);
         let recent = app.history.lock().unwrap().recent_tracks(12);
         let rc: Vec<CardData> = recent
             .iter()
-            .map(|t| CardData { art: t.artwork_url.clone(), title: format!("Like “{}”", t.title), sub: t.artist_line(), provider: None, open: CardAct::Radio(t.clone()), play: None })
+            .map(|t| CardData { shape: widgets::CardShape::Square, art: t.artwork_url.clone(), title: format!("Like “{}”", t.title), sub: t.artist_line(), provider: None, open: CardAct::Radio(t.clone()), play: None })
             .collect();
         card_row(app, ui, "Start radio from recent songs", &rc, None);
         let liked: Vec<Track> = {
@@ -441,7 +516,7 @@ pub fn discover(app: &mut AquaApp, ui: &mut Ui) {
         };
         let lc: Vec<CardData> = liked
             .iter()
-            .map(|t| CardData { art: t.artwork_url.clone(), title: format!("Like “{}”", t.title), sub: t.artist_line(), provider: None, open: CardAct::Radio(t.clone()), play: None })
+            .map(|t| CardData { shape: widgets::CardShape::Square, art: t.artwork_url.clone(), title: format!("Like “{}”", t.title), sub: t.artist_line(), provider: None, open: CardAct::Radio(t.clone()), play: None })
             .collect();
         card_row(app, ui, "From your library", &lc, None);
         if top.is_empty() && recent.is_empty() && liked.is_empty() {
@@ -473,7 +548,7 @@ pub fn now_playing(app: &mut AquaApp, ui: &mut Ui) {
     }
     let wide = ui.available_width() > 820.0;
     let accent = app.accent();
-    let mut body = |app: &mut AquaApp, ui: &mut Ui| {
+    let body = |app: &mut AquaApp, ui: &mut Ui| {
         ui.label(RichText::new(&t.title).size(28.0).strong());
         ui.label(RichText::new(t.artist_line()).size(17.0));
         if !t.album.is_empty() {

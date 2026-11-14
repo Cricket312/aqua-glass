@@ -4,7 +4,7 @@
 //! enabled and dropped (unregistered) when disabled. On non-Windows builds
 //! (development only) these are no-ops.
 
-use crate::audio::engine::{Cmd, Engine, PlayerState};
+use crate::audio::engine::{Cmd, Engine};
 use crate::shortcuts::Action;
 use std::sync::mpsc;
 

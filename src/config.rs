@@ -387,6 +387,8 @@ pub enum RightPanel {
     #[default]
     Closed,
     Queue,
+    /// Similarity Radio tab.
+    Radio,
     Lyrics,
     Info,
 }

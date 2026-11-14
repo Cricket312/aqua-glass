@@ -130,6 +130,8 @@ pub struct AquaApp {
     pub edit_theme: Theme,
     pub page: Page,
     pub back: Vec<Page>,
+    pub forward: Vec<Page>,
+    pub featured_idx: usize,
     pub filter: Filter,
     pub engine: Engine,
     pub out: Output,
@@ -269,6 +271,8 @@ impl AquaApp {
             edit_theme,
             page: Page::Home,
             back: Vec::new(),
+            forward: Vec::new(),
+            featured_idx: 0,
             filter: Filter::All,
             engine,
             out,
@@ -467,6 +471,7 @@ impl AquaApp {
 
     pub fn navigate(&mut self, p: Page) {
         if self.page != p {
+            self.forward.clear();
             let prev = std::mem::replace(&mut self.page, p);
             self.back.push(prev);
             if self.back.len() > 30 {
@@ -486,7 +491,15 @@ impl AquaApp {
 
     pub fn go_back(&mut self) {
         if let Some(p) = self.back.pop() {
-            self.page = p;
+            let cur = std::mem::replace(&mut self.page, p);
+            self.forward.push(cur);
+        }
+    }
+
+    pub fn go_forward(&mut self) {
+        if let Some(p) = self.forward.pop() {
+            let cur = std::mem::replace(&mut self.page, p);
+            self.back.push(cur);
         }
     }
 

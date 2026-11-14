@@ -26,6 +26,14 @@ pub fn paint(app: &mut AquaApp, ui: &mut Ui) {
     painter.rect_filled(rect, 0, base);
     let c = app.cfg.clone();
     let mut active = false;
+    if c.active("bg_gradient") && c.active("custom_theme") {
+        // faint static aqua glows (top-left and lower-right); no texture, no repaint
+        let a2 = theme.accent2;
+        let big = rect.width().max(rect.height());
+        radial(&painter, rect.left_top() + egui::vec2(rect.width() * 0.18, rect.height() * 0.05), big * 0.65, Color32::from_rgba_unmultiplied(a2[0], a2[1], a2[2], 22));
+        radial(&painter, rect.right_bottom() - egui::vec2(rect.width() * 0.2, rect.height() * 0.15), big * 0.55, Color32::from_rgba_unmultiplied(a2[0], a2[1], a2[2], 14));
+        active = true;
+    }
 
     // image source: album art takes precedence when enabled and available
     let art = if c.active("bg_album_art") { app.state.current.as_ref().map(|t| t.artwork_url.clone()).filter(|u| !u.is_empty()) } else { None };
