@@ -275,19 +275,31 @@ fn top_bar(app: &mut AquaApp, ui: &mut Ui) {
         if app.search.pending > 0 {
             ui.spinner();
         }
-        // provider filter chips
+        // provider filter chips (a compact dropdown when space is tight)
         ui.add_space(10.0);
         let mut f = app.filter;
-        chip(ui, &mut f, Filter::All, "All");
-        for p in [ProviderKind::Spotify, ProviderKind::YouTube, ProviderKind::Local] {
-            if app.provider_enabled(p) {
-                let label = match p {
-                    ProviderKind::Spotify => "Spotify",
-                    ProviderKind::YouTube => "YouTube",
-                    ProviderKind::Local => "Local",
-                };
-                chip(ui, &mut f, Filter::Only(p), label);
+        let label = |p: ProviderKind| match p {
+            ProviderKind::Spotify => "Spotify",
+            ProviderKind::YouTube => "YouTube",
+            ProviderKind::Local => "Local",
+        };
+        let enabled: Vec<ProviderKind> = [ProviderKind::Spotify, ProviderKind::YouTube, ProviderKind::Local].into_iter().filter(|p| app.provider_enabled(*p)).collect();
+        if ui.available_width() > 90.0 * (enabled.len() as f32 + 1.0) {
+            chip(ui, &mut f, Filter::All, "All");
+            for p in &enabled {
+                chip(ui, &mut f, Filter::Only(*p), label(*p));
             }
+        } else {
+            let cur = match f {
+                Filter::All => "All services",
+                Filter::Only(p) => label(p),
+            };
+            egui::ComboBox::from_id_salt("filter_combo").selected_text(cur).width(110.0).show_ui(ui, |ui| {
+                ui.selectable_value(&mut f, Filter::All, "All services");
+                for p in &enabled {
+                    ui.selectable_value(&mut f, Filter::Only(*p), label(*p));
+                }
+            });
         }
         if f != app.filter {
             app.filter = f;
@@ -578,6 +590,8 @@ pub fn radio_controls(app: &mut AquaApp, ui: &mut Ui) {
         }
         if let Some(e) = &st.error {
             ui.add(egui::Label::new(RichText::new(e).size(11.5).color(widgets::impact_color(crate::features::Impact::High))).wrap());
+        } else if let Some(m) = &st.message {
+            ui.add(egui::Label::new(RichText::new(m).size(11.5).color(ui.visuals().weak_text_color())).wrap());
         }
     }
     ui.horizontal_wrapped(|ui| {

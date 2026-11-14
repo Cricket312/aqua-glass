@@ -576,7 +576,11 @@ fn worker(rx: mpsc::Receiver<Msg>, tx: mpsc::Sender<Msg>, status: Arc<Mutex<Stat
                         w.deps.engine.send(Cmd::RadioAppend(t));
                     }
                     Ok(_) => {
-                        s.error = Some("No playable recommendations found for this seed with the current settings.".into());
+                        if s.generated > 0 {
+                            s.message = Some("No more similar songs available right now — trying again after the next song.".into());
+                        } else {
+                            s.error = Some("No playable recommendations found for this song with the current settings and sources.".into());
+                        }
                         w.stalled = true;
                     }
                     Err(e) => {

@@ -131,7 +131,7 @@ pub fn artwork(ui: &mut Ui, tex: Option<&egui::TextureHandle>, size: f32, roundi
             let (rect, resp) = ui.allocate_exact_size(sz, egui::Sense::click());
             let v = ui.visuals();
             ui.painter().rect_filled(rect, rounding, v.faint_bg_color);
-            ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, icon::NOW(), egui::FontId::proportional(size * 0.4), v.weak_text_color());
+            ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, icon::NOW(), egui::FontId::proportional((size * 0.4).min(48.0)), v.weak_text_color());
             resp
         }
     }
@@ -313,7 +313,7 @@ pub fn media_card(ui: &mut Ui, tex: Option<&egui::TextureHandle>, title: &str, s
         }
         None => {
             p.rect_filled(art_rect, ar, v.widgets.inactive.bg_fill);
-            p.text(art_rect.center(), egui::Align2::CENTER_CENTER, icon::NOW(), egui::FontId::proportional(art * 0.3), v.weak_text_color());
+            p.text(art_rect.center(), egui::Align2::CENTER_CENTER, icon::NOW(), egui::FontId::proportional((art * 0.3).min(48.0)), v.weak_text_color());
         }
     }
     let ty = art_rect.bottom() + 8.0;

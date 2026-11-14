@@ -47,7 +47,31 @@ DISPLAY=:99 python3 bench/soak.py <music-dir> 10 bench/soak-linux-dev.json Enhan
 `examples/make_config.rs` (preset + extra toggles), launches the release binary with
 `--page <page> <audio files…>`, waits, samples, and terminates it.
 
-## Results: operating conditions
+## Version 0.2.0 (redesign + Similarity Radio)
+
+Same procedure and environment, raw data in `bench/results-linux-dev-v0.2.json`:
+
+| Scenario | 0.1.0 | **0.2.0** |
+|---|---|---|
+| Minimal, idle | 41.3 MB | **41.3 MB** |
+| Minimal, playing | 41.4 MB | **41.9 MB** |
+| Balanced (default), idle | 41.3 MB | **41.6 MB** |
+| Balanced, playing (Home) | 41.5 MB | **41.8 MB** |
+| Balanced, playing (Now Playing) | 49.8 MB | **42.8 MB** |
+| Enhanced, Now Playing | 51.2 MB | **43.9 MB** |
+| Fully Customized + background image + Discord | 53.5 MB | **45.4 MB** |
+| Background image (Δ vs baseline) | +16.1 MB | **+10.8 MB** |
+
+The first 0.2.0 run showed Now Playing at 66.8 MB: the placeholder artwork glyph was being
+rasterised at ~180 px, which grows egui's font-atlas texture. Capping it at 48 px fixed the
+regression and also removed most of the old 0.1.0 Now Playing overhead.
+
+**Similarity Radio:** search → play a song with the 24-track tagged local library, radio on
+vs. off, 12 s after starting, mean of 5 samples: **50.3 MB vs 50.2 MB** (+0.1 MB; both runs
+include the open right panel and search results). The radio is rated Low (+0.5–3 MB
+estimate) and its worker only exists while enabled.
+
+## Results: operating conditions (0.1.0)
 
 | Scenario | Page | Private memory | VmRSS |
 |---|---|---|---|

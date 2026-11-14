@@ -11,7 +11,7 @@ but it is plain TOML and safe to edit while Aqua Glass is closed.
   (you get a notification). Out-of-range values are clamped; unknown feature ids are dropped;
   missing keys get defaults.
 * **Secrets are never stored here.** Spotify/YouTube refresh tokens and the Google client
-  secret are in Windows Credential Manager under `AquaGlass`. Exported settings are
+  secret and the Last.fm API key are in Windows Credential Manager under `AquaGlass`. Exported settings are
   therefore safe to share.
 
 Other files in the data folder:
@@ -20,6 +20,8 @@ Other files in the data folder:
 |---|---|
 | `settings.toml` | this configuration |
 | `measurements.toml` | per-feature RAM deltas measured on this PC |
+| `history.json` | last 500 plays (local only; Settings › Playback › Clear listening history) |
+| `cache/local-art/` | cover art extracted from local files |
 | `themes/*.toml` | user themes (declarative; no scripts) |
 | `library/<provider>/index.json` | imported playlist headers, albums, artists, sync status, conflicts |
 | `library/<provider>/pl_<id>.json` | cached tracks of an imported playlist |
@@ -60,6 +62,7 @@ preset applies.
 | `window_backdrop` | Windows 11 Acrylic Backdrop | MODERATE | +2–12 MB | `translucent_panels` | ✔ |  |  |  | ✔ |
 | `custom_font` | Custom Font | MODERATE | +0.5–15 MB |  | ✔ |  |  | ✔ | ✔ |
 | `artwork_in_lists` | Artwork Thumbnails in Lists | MODERATE | +4–15 MB |  |  |  | ✔ | ✔ | ✔ |
+| `sidebar_branding` | Show Name in Collapsed Sidebar | LOW | +0–0 MB |  | ✔ |  |  |  |  |
 
 ### Backgrounds
 
@@ -80,6 +83,17 @@ preset applies.
 |---|---|---|---|---|---|---|---|---|---|
 | `remember_queue` | Restore Queue on Launch | LOW | +0–1 MB |  |  | ✔ | ✔ | ✔ | ✔ |
 | `notifications` | Track Change Notifications | LOW | +0.5–3 MB |  |  |  |  | ✔ | ✔ |
+| `similarity_radio` | Automatic Similarity Radio | LOW | +0.5–3 MB |  |  | ✔ | ✔ | ✔ | ✔ |
+| `radio_from_search` | Activate from Search | LOW | +0–0 MB | `similarity_radio` |  | ✔ | ✔ | ✔ | ✔ |
+| `radio_from_artist` | Activate from Artist Pages | LOW | +0–0 MB | `similarity_radio` |  |  |  |  |  |
+| `radio_from_album` | Activate from Album Pages | LOW | +0–0 MB | `similarity_radio` |  |  |  |  |  |
+| `radio_endless` | Endless Radio | LOW | +0–0.5 MB | `similarity_radio` |  | ✔ | ✔ | ✔ | ✔ |
+| `radio_prefer_unheard` | Prefer Unheard Songs | LOW | +0–0 MB | `similarity_radio` |  | ✔ | ✔ | ✔ | ✔ |
+| `radio_avoid_recent` | Avoid Recently Played | LOW | +0–0 MB | `similarity_radio` |  | ✔ | ✔ | ✔ | ✔ |
+| `radio_avoid_duplicates` | Avoid Duplicate Tracks | LOW | +0–0 MB | `similarity_radio` |  | ✔ | ✔ | ✔ | ✔ |
+| `radio_repeat_artists` | Allow Repeated Artists | LOW | +0–0 MB | `similarity_radio` |  |  |  |  |  |
+| `radio_learn` | Learn From Likes and Skips | LOW | +0–0.2 MB | `similarity_radio` |  | ✔ | ✔ | ✔ | ✔ |
+| `radio_stay_close` | Stay Close to Original | LOW | +0–0 MB | `similarity_radio` |  |  |  |  |  |
 
 ### Audio
 
@@ -171,7 +185,8 @@ preset applies.
 
 | Section | Keys |
 |---|---|
-| `[general]` | `last_settings_category`, `window_pos`, `window_size`, `ui_scale` (0.6–2.5), `sidebar_width` |
+| `[general]` | `last_settings_category`, `window_pos`, `window_size`, `ui_scale` (0.6–2.5), `sidebar_width`, `sidebar_collapsed`, `right_panel` (`Closed`/`Queue`/`Lyrics`/`Info`) |
+| `[radio]` | `strength` (`Familiar`/`Balanced`/`Adventurous`/`DeepDiscovery`), `target` (5–50, default 15), `threshold` (default 5), `provider` (`Automatic`/`Spotify`/`Local`/`YouTube`) |
 | `[appearance]` | `theme` (name), `font_path`, `player_bar_layout` (`Classic`/`Centered`/`Compact`), `player_bar_height` |
 | `[background]` | `image_path`, `blur_radius` (0–80), `dim` (0–1), `opacity` (0–1), `anim_speed`, `anim_fps` (5–60), `transition_ms`, `scale` (`Fill`/`Fit`/`Stretch`/`Center`), `parallax_px` |
 | `[playback]` | `preferred_provider`, `ask_when_both`, `volume`, `muted`, `shuffle`, `repeat` (`Off`/`All`/`One`), `quality` (`Low96`/`Normal160`/`High320`), `fade_ms`, `seek_step_s`, `volume_step` |
@@ -204,16 +219,18 @@ numeric values are clamped:
 ```toml
 name = "My Theme"
 dark = true
-accent = [34, 211, 238]
-accent2 = [59, 130, 246]
-background = [10, 17, 28]
-panel = [16, 27, 42]
-surface = [24, 39, 58]
-text = [226, 240, 250]
-text_dim = [140, 163, 184]
-border = [40, 70, 95]
-panel_alpha = 0.72        # panel opacity with "Translucent Panels"
-rounding = 10.0           # 0–30
+accent = [98, 214, 178]   # seafoam #62D6B2
+accent2 = [54, 184, 172]  # aqua #36B8AC
+accent_hover = [133, 229, 200]
+background = [11, 21, 23] # #0B1517
+sidebar = [16, 29, 31]    # #101D1F
+panel = [23, 39, 41]      # cards #172729
+surface = [32, 52, 54]    # elevated #203436
+text = [240, 247, 245]
+text_dim = [155, 174, 170]
+border = [41, 64, 63]
+panel_alpha = 0.92        # panel opacity with "Translucent Panels"
+rounding = 8.0            # 0–30
 spacing = 8.0             # 2–24
 font_size = 14.0          # 9–28
 heading_size = 22.0       # 12–48

@@ -1,0 +1,288 @@
+{
+ "generated": "2026-11-14 09:13",
+ "settle_s": 12.0,
+ "sample_s": 5.0,
+ "results": [
+  {
+   "name": "minimal-idle",
+   "preset": "Minimal",
+   "toggles": [],
+   "page": "home",
+   "playing": false,
+   "private_mb_mean": 41.3,
+   "private_mb_max": 41.4,
+   "rss_mb_mean": 123.2,
+   "cpu_seconds_total": 0.8
+  },
+  {
+   "name": "minimal-playback",
+   "preset": "Minimal",
+   "toggles": [],
+   "page": "home",
+   "playing": true,
+   "private_mb_mean": 41.9,
+   "private_mb_max": 41.9,
+   "rss_mb_mean": 123.7,
+   "cpu_seconds_total": 1.52
+  },
+  {
+   "name": "balanced-idle",
+   "preset": "Balanced",
+   "toggles": [],
+   "page": "home",
+   "playing": false,
+   "private_mb_mean": 41.6,
+   "private_mb_max": 41.6,
+   "rss_mb_mean": 123.4,
+   "cpu_seconds_total": 0.87
+  },
+  {
+   "name": "balanced-playback",
+   "preset": "Balanced",
+   "toggles": [],
+   "page": "home",
+   "playing": true,
+   "private_mb_mean": 41.8,
+   "private_mb_max": 41.8,
+   "rss_mb_mean": 124.0,
+   "cpu_seconds_total": 1.9
+  },
+  {
+   "name": "balanced-nowplaying",
+   "preset": "Balanced",
+   "toggles": [],
+   "page": "now-playing",
+   "playing": true,
+   "private_mb_mean": 42.8,
+   "private_mb_max": 42.8,
+   "rss_mb_mean": 126.2,
+   "cpu_seconds_total": 1.97
+  },
+  {
+   "name": "enhanced-nowplaying",
+   "preset": "Enhanced",
+   "toggles": [],
+   "page": "now-playing",
+   "playing": true,
+   "private_mb_mean": 43.9,
+   "private_mb_max": 43.9,
+   "rss_mb_mean": 127.4,
+   "cpu_seconds_total": 14.09
+  },
+  {
+   "name": "full-nowplaying",
+   "preset": "FullyCustomized",
+   "toggles": [
+    "+bg_image",
+    "+discord"
+   ],
+   "page": "now-playing",
+   "playing": true,
+   "private_mb_mean": 45.4,
+   "private_mb_max": 45.4,
+   "rss_mb_mean": 129.4,
+   "cpu_seconds_total": 25.18
+  },
+  {
+   "name": "feature-baseline",
+   "preset": "Minimal",
+   "toggles": [],
+   "page": "now-playing",
+   "playing": true,
+   "private_mb_mean": 42.2,
+   "private_mb_max": 42.2,
+   "rss_mb_mean": 124.1,
+   "cpu_seconds_total": 1.58
+  },
+  {
+   "name": "feature:visualizer",
+   "preset": "Minimal",
+   "toggles": [
+    "+visualizer"
+   ],
+   "page": "now-playing",
+   "playing": true,
+   "private_mb_mean": 42.5,
+   "private_mb_max": 42.5,
+   "rss_mb_mean": 125.3,
+   "cpu_seconds_total": 13.52,
+   "delta_vs_baseline_mb": 0.3
+  },
+  {
+   "name": "feature:visualizer,vis_in_bar",
+   "preset": "Minimal",
+   "toggles": [
+    "+visualizer",
+    "+vis_in_bar"
+   ],
+   "page": "now-playing",
+   "playing": true,
+   "private_mb_mean": 42.6,
+   "private_mb_max": 42.6,
+   "rss_mb_mean": 125.0,
+   "cpu_seconds_total": 13.36,
+   "delta_vs_baseline_mb": 0.4
+  },
+  {
+   "name": "feature:bg_image",
+   "preset": "Minimal",
+   "toggles": [
+    "+bg_image"
+   ],
+   "page": "now-playing",
+   "playing": true,
+   "private_mb_mean": 53.0,
+   "private_mb_max": 53.0,
+   "rss_mb_mean": 135.6,
+   "cpu_seconds_total": 2.02,
+   "delta_vs_baseline_mb": 10.8
+  },
+  {
+   "name": "feature:bg_image,bg_blur",
+   "preset": "Minimal",
+   "toggles": [
+    "+bg_image",
+    "+bg_blur"
+   ],
+   "page": "now-playing",
+   "playing": true,
+   "private_mb_mean": 43.1,
+   "private_mb_max": 43.1,
+   "rss_mb_mean": 125.7,
+   "cpu_seconds_total": 1.84,
+   "delta_vs_baseline_mb": 0.9
+  },
+  {
+   "name": "feature:bg_animated",
+   "preset": "Minimal",
+   "toggles": [
+    "+bg_animated"
+   ],
+   "page": "now-playing",
+   "playing": true,
+   "private_mb_mean": 42.2,
+   "private_mb_max": 42.2,
+   "rss_mb_mean": 124.0,
+   "cpu_seconds_total": 19.71,
+   "delta_vs_baseline_mb": 0.0
+  },
+  {
+   "name": "feature:bg_image,bg_transitions",
+   "preset": "Minimal",
+   "toggles": [
+    "+bg_image",
+    "+bg_transitions"
+   ],
+   "page": "now-playing",
+   "playing": true,
+   "private_mb_mean": 53.0,
+   "private_mb_max": 53.0,
+   "rss_mb_mean": 135.6,
+   "cpu_seconds_total": 2.0,
+   "delta_vs_baseline_mb": 10.8
+  },
+  {
+   "name": "feature:custom_theme,translucent_panels,shadows,animations,hover_effects",
+   "preset": "Minimal",
+   "toggles": [
+    "+custom_theme",
+    "+translucent_panels",
+    "+shadows",
+    "+animations",
+    "+hover_effects"
+   ],
+   "page": "now-playing",
+   "playing": true,
+   "private_mb_mean": 42.4,
+   "private_mb_max": 42.4,
+   "rss_mb_mean": 124.7,
+   "cpu_seconds_total": 1.67,
+   "delta_vs_baseline_mb": 0.2
+  },
+  {
+   "name": "feature:custom_font",
+   "preset": "Minimal",
+   "toggles": [
+    "+custom_font"
+   ],
+   "page": "now-playing",
+   "playing": true,
+   "private_mb_mean": 42.8,
+   "private_mb_max": 42.8,
+   "rss_mb_mean": 124.9,
+   "cpu_seconds_total": 1.64,
+   "delta_vs_baseline_mb": 0.6
+  },
+  {
+   "name": "feature:overlay",
+   "preset": "Minimal",
+   "toggles": [
+    "+overlay"
+   ],
+   "page": "now-playing",
+   "playing": true,
+   "private_mb_mean": 42.0,
+   "private_mb_max": 42.0,
+   "rss_mb_mean": 124.5,
+   "cpu_seconds_total": 1.81,
+   "delta_vs_baseline_mb": -0.2
+  },
+  {
+   "name": "feature:eq,bass_boost",
+   "preset": "Minimal",
+   "toggles": [
+    "+eq",
+    "+bass_boost"
+   ],
+   "page": "now-playing",
+   "playing": true,
+   "private_mb_mean": 42.2,
+   "private_mb_max": 42.2,
+   "rss_mb_mean": 124.1,
+   "cpu_seconds_total": 1.62,
+   "delta_vs_baseline_mb": 0.0
+  },
+  {
+   "name": "feature:discord",
+   "preset": "Minimal",
+   "toggles": [
+    "+discord"
+   ],
+   "page": "now-playing",
+   "playing": true,
+   "private_mb_mean": 42.1,
+   "private_mb_max": 42.1,
+   "rss_mb_mean": 124.5,
+   "cpu_seconds_total": 1.65,
+   "delta_vs_baseline_mb": -0.1
+  },
+  {
+   "name": "feature:lyrics",
+   "preset": "Minimal",
+   "toggles": [
+    "+lyrics"
+   ],
+   "page": "now-playing",
+   "playing": true,
+   "private_mb_mean": 42.5,
+   "private_mb_max": 42.5,
+   "rss_mb_mean": 125.6,
+   "cpu_seconds_total": 1.71,
+   "delta_vs_baseline_mb": 0.3
+  },
+  {
+   "name": "feature:artwork_in_lists",
+   "preset": "Minimal",
+   "toggles": [
+    "+artwork_in_lists"
+   ],
+   "page": "now-playing",
+   "playing": true,
+   "private_mb_mean": 42.1,
+   "private_mb_max": 42.1,
+   "rss_mb_mean": 124.1,
+   "cpu_seconds_total": 1.69,
+   "delta_vs_baseline_mb": -0.1
+  }
+ ]
+}

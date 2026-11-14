@@ -7,9 +7,10 @@ searchable settings menu where every optional feature can be switched off and sh
 RAM impact.
 
 * No Electron, no Chromium, no embedded browser, no helper processes.
-* Measured: **~41 MB private memory idle / during playback, ~50–54 MB with the richest
-  presets** (Linux development environment, see [Benchmarks](docs/BENCHMARKS.md)).
-  The default soft target is 200 MB.
+* Measured: **~41–42 MB private memory idle / during playback, ~43–45 MB with the richest
+  presets**, Similarity Radio ≈ +0.1 MB (Linux development environment, see
+  [Benchmarks](docs/BENCHMARKS.md)). The default soft target is 200 MB.
+* **Automatic Similarity Radio**: play one song from search and similar songs keep coming.
 * No telemetry, no analytics, no ads. Tokens live in Windows Credential Manager.
 
 > **Status — please read.** Everything listed under "Verified" below was compiled, run and
@@ -23,18 +24,23 @@ RAM impact.
 
 ---
 
+![Home](docs/screenshot-home.png)
+
+![Similarity Radio](docs/screenshot-radio.png)
+
 ## Contents
 
 1. [Installing](#installing)
 2. [Connecting your services](#connecting-your-services)
 3. [What works with which service](#what-works-with-which-service)
 4. [Using Aqua Glass](#using-aqua-glass)
-5. [Settings, RAM ratings and presets](#settings-ram-ratings-and-presets)
-6. [Privacy and security](#privacy-and-security)
-7. [Building from source](#building-from-source)
-8. [Testing and benchmarking](#testing-and-benchmarking)
-9. [Architecture](#architecture)
-10. [Known limitations](#known-limitations)
+5. [Similarity Radio](#similarity-radio)
+6. [Settings, RAM ratings and presets](#settings-ram-ratings-and-presets)
+7. [Privacy and security](#privacy-and-security)
+8. [Building from source](#building-from-source)
+9. [Testing and benchmarking](#testing-and-benchmarking)
+10. [Architecture](#architecture)
+11. [Known limitations](#known-limitations)
 
 Further reading: [Configuration reference](docs/CONFIGURATION.md) ·
 [Benchmarks](docs/BENCHMARKS.md) · [Changelog](CHANGELOG.md)
@@ -136,9 +142,16 @@ are never swapped silently.
 
 ## Using Aqua Glass
 
-* **Pages:** Home, Search, Library, Playlists, Artists, Albums, Now Playing, Queue,
-  Playlist Transfer, Settings. The playback bar is always visible.
-* **Service filter** (sidebar): All / SP / YT / LO. Disabled services do no background work.
+* **Layout:** collapsible sidebar (Home, Search, Library, Playlists, Artists, Albums,
+  Discover, Queue, Playlist Transfer, Settings, your playlists, and the compact RAM
+  indicator), a top bar with the search field and service filter, the main content area,
+  the persistent bottom player, and an optional right panel (Queue & Radio / Lyrics / Now
+  Playing) that is only shown when you open it. Click the artwork in the player for the
+  Now Playing page. There are no social features.
+* **Home** shows Recently Played, Favorite Playlists, Made For You (Spotify-made playlists
+  you follow), Recently Added, Your Top Mixes, Discover New Music, Recently Imported Spotify
+  Playlists and Local Music — each row appears only when there is real data for it.
+* **Service filter** (top bar): All / Spotify / YouTube / Local. Disabled services do no background work.
 * **Library import & sync** (Library page / Settings → Library & Synchronization):
   * *Accessing* a playlist reads it live from the service.
   * *Importing* caches it locally (`%APPDATA%\AquaGlass\library`) and keeps it in sync;
@@ -163,6 +176,44 @@ are never swapped silently.
   they work system-wide; macro pads that send key combinations (e.g. F13–F24) work as-is.
   Hardware media keys and the Windows media flyout work via "Windows Media Controls".
 
+## Similarity Radio
+
+Play a single song from search results and Aqua Glass starts **Similarity Radio**
+automatically (Settings › Playback › Similarity Radio; on by default). The song plays
+immediately; ~15 similar, *playable* songs are added to the "Automatically Recommended"
+part of the queue in the background and refilled when fewer than 5 remain.
+
+* **Source of similarity:** [Last.fm](https://www.last.fm/api)'s public similarity data
+  (`track.getSimilar`, `artist.getSimilar`, `artist.getTopTracks`). It needs a free API key:
+  create one at <https://www.last.fm/api/account/create> and paste it in Settings ›
+  Playback › Similarity Radio (stored in Credential Manager). Only the seed's artist/title
+  and related artist names are sent; no Last.fm account or scrobbling.
+* **Without a key** the radio falls back to songs by the same artist / from the same album
+  (local library and Spotify) and labels itself "Artist & album based". It never invents
+  recommendations.
+* **Playable only:** each candidate is matched to a track you can actually play — your local
+  library first, then Spotify (when Premium playback is ready) using the same strict
+  matching as playlist transfer (no live/remix/cover substitutions). Unmatched candidates
+  are dropped. YouTube is used only if you choose it as provider (tracks open in the browser,
+  so the radio can't auto-advance there).
+* **Discovery strength:** *Familiar* (the seed's closest similar tracks), *Balanced* (plus the
+  best-known songs of the 6 closest related artists), *Adventurous* (artists 4–24 in the
+  related-artist list, seed artist down-weighted), *Deep Discovery* (artists 10–60, their
+  less popular tracks, popularity-penalised, seed artist and songs you've heard excluded).
+* **Rules:** Prefer Unheard, Avoid Recently Played (7 days), Avoid Duplicates (per session),
+  Allow Repeated Artists (off = one per artist per batch, not within the last 4), Learn From
+  Likes and Skips (3 skips drop an artist for the session — never the seed's artist; likes
+  boost an artist and steer the seed), Stay Close to Original (otherwise the seed follows
+  the radio), Endless Radio, target size and refill threshold, preferred provider.
+* **Queue behaviour:** songs you add with "Add to queue" always play before recommendations;
+  playing a playlist or album never gets radio mixed in (with "Activate from Album/Artist
+  Pages" on, recommendations follow *after* the album). Controls in the right panel:
+  Radio on/off, Refresh, More Like This, Stay close to original, Save queue as playlist
+  (Spotify playlist for Spotify songs, M3U file for the rest).
+* **Footprint:** one worker thread that only exists while the feature is on, woken by queue
+  changes (no polling); bounded caches (48 Last.fm responses); measured ≈ +0.1 MB.
+* Listening history (last 500 plays, `history.json`) stays on your PC and can be cleared.
+
 ## Settings, RAM ratings and presets
 
 Open settings with the always-visible **⚙ Settings** button, `Ctrl+,`, the tray menu, the
@@ -170,7 +221,7 @@ Open settings with the always-visible **⚙ Settings** button, `Ctrl+,`, the tra
 the search box finds settings by name, description, category or keywords — e.g. "RAM",
 "lyrics", "Discord", "background".
 
-Every optional feature (64 of them) has its own toggle, description, dependency info and a
+Every optional feature (76 of them) has its own toggle, description, dependency info and a
 RAM badge:
 
 ```
@@ -260,7 +311,9 @@ cargo build --release --no-default-features --features local-files
 cargo test                       # unit + integration tests
 ```
 
-* 70+ unit tests: config persistence/migration/invalid files, feature registry and
+* 85 unit tests (including Similarity Radio: the four discovery modes differ as specified,
+  duplicate/artist/recently-played/skip/like rules, unplayable candidates dropped, Last.fm
+  response parsing, history bounds), plus: config persistence/migration/invalid files, feature registry and
   presets, disable/restore visuals, shortcut parsing and conflicts, theme loading and
   validation, Spotify/YouTube response parsing (both 2026 and older field names), API
   error classification, OAuth PKCE (RFC 7636 vector), library import/sync/conflicts/
@@ -268,6 +321,10 @@ cargo test                       # unit + integration tests
   round-trips, transfer planning/execution with a fake service, queue logic incl. a
   20,000-track shuffle, DSP (EQ gain at 1 kHz, bass shelf, balance, resampler),
   lyrics parsing (LRC, offsets, word timing), visualizer FFT, Discord presence content.
+* `tests/radio_e2e.rs` runs the real engine, audio output, library store and radio worker:
+  radio starts from a played song, fills to 15, a manually queued song plays before the
+  recommendations, the queue refills before running out, no duplicates, Stop clears only
+  the recommendations.
 * `tests/playback.rs` plays generated audio through the real decoder → DSP → audio output →
   engine: auto-advance (gapless and not, including a track shorter than the buffer), seek,
   pause, end of queue, missing files, Spotify without a session. It needs an audio device
@@ -293,8 +350,10 @@ src/
   shortcuts.rs       actions, binding parser, conflict detection
   artwork.rs         downscaling image loader, LRU texture cache with byte budget, blur
   discord.rs         Rich Presence worker (exists only while enabled)
+  history.rs         local listening history (bounded)
+  radio.rs           Similarity Radio: gather (Last.fm) → rank/filter → resolve → queue
   winint.rs          tray, SMTC media controls, global hotkeys, autostart, toasts, acrylic
-  services/          oauth (PKCE loopback), spotify (Web API), youtube (Data API), lyrics
+  services/          oauth (PKCE loopback), spotify (Web API), youtube (Data API), lyrics, lastfm
   audio/
     output.rs        single cpal/WASAPI output: ring buffer, volume, fades, visualizer tap
     dsp.rs           EQ, bass shelf, preamp/ReplayGain, balance, resampler
@@ -302,7 +361,8 @@ src/
     spotify.rs       librespot session + custom Sink into our output
     local.rs         symphonia decoding, tag probing, folder scan
     visualizer.rs    FFT analyzer (runs only while visible)
-  ui/                egui pages, settings, transfer, mini-player/overlay, background
+  ui/                shell (sidebar/top bar/player/right panel), browse (home/search/discover/
+                     now playing/queue), pages (library views), settings, transfer, viewports
 ```
 
 Key decisions:
@@ -333,6 +393,13 @@ Honest list of what is not done or not verified:
   network route to them in the build environment). Parsing is tested against fixtures that
   follow the documented response formats, but end-to-end sign-in, sync, playback and
   transfers need verification with real accounts.
+* **Similarity Radio with Last.fm was not tested live** (no network route to Last.fm here);
+  the Last.fm parsing is tested against the documented JSON format and the selection logic
+  against a deterministic in-memory similarity graph. The end-to-end radio flow (start from
+  search, fill, refill, manual priority, no duplicates) was tested with the artist/album
+  fallback source and real audio playback.
+* No reference screenshots were available while redesigning; the layout follows the written
+  specification (Spicetify-style sidebar / content / bottom player / optional right panel).
 * YouTube Music playback is not in-app (see above). No YouTube albums, artists pages,
   recently played or lyrics from YouTube.
 * Not implemented: crossfade, WASAPI exclusive mode, lyric translations, lyric blur/

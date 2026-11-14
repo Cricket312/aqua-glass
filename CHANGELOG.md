@@ -1,5 +1,50 @@
 # Changelog
 
+## 0.2.0 — 2026-11-14 (redesign + Similarity Radio)
+
+### Changed — interface redesign
+- New default palette: dark aqua surfaces (#0B1517 / #101D1F / #172729 / #203436) with
+  seafoam (#62D6B2) and aqua (#36B8AC) accents used only for active navigation, progress,
+  enabled switches, selected controls, radio indicators and the RAM bar.
+- Collapsible icon sidebar with understated branding (small droplet + small name; the
+  droplet in collapsed mode is optional), navigation incl. new **Discover** page, a compact
+  list of your playlists, and the compact RAM indicator (usage / target / state bar).
+- Top bar with a prominent search field, back button and provider filter chips.
+- Home: greeting, quick tiles, and card rows (Recently Played, Favorite Playlists, Made For
+  You, Recently Added, Your Top Mixes, Discover New Music, Recently Imported Spotify
+  Playlists, Local Music) — each shown only when real data exists; 2–8 cards per row
+  adapting to the window, sidebar and right panel; hover play buttons.
+- Compact bottom player: artwork/title/artist/like · controls + progress · queue,
+  lyrics, output device, volume, mini-player, quick settings.
+- Optional right panel (Queue & Radio / Lyrics / Now Playing), closed by default.
+- Search results with artwork rows; Now Playing centred on large artwork.
+- Settings: compact category navigation, grouped cards, switch toggles, RAM badges kept on
+  every optional feature; Performance page with summary cards and a collapsible
+  "Detailed Diagnostics" section; measured costs listed separately from estimates.
+- No social / Friend Activity features exist (none were ever added).
+
+### Added
+- **Automatic Similarity Radio**: playing a single song from search starts radio with that
+  song as seed (configurable: also from artist/album pages); ~15 recommendations, refilled
+  below 5; endless mode; four discovery strengths (Familiar, Balanced, Adventurous, Deep
+  Discovery) that use the Last.fm similarity graph differently; rules for unheard songs,
+  recently played, duplicates, repeated artists, learning from likes/skips, staying close to
+  the original seed; preferred provider. Recommendations are only queued when they resolve
+  to a playable track (local library, or Spotify with Premium playback); manual queue items
+  always play first; radio never replaces playlist/album playback. Without a Last.fm API key
+  it falls back to same-artist/same-album songs and says so. Panel controls: on/off,
+  Refresh, More Like This, Stay close, Save queue as playlist.
+- Local listening history (500 plays, stays on the PC) powering Recently Played, Top Mixes
+  and the radio rules; clearable.
+- Embedded cover art for local files.
+- Output device menu in the player bar.
+
+### Fixed
+- Placeholder artwork glyph was rasterised at up to ~180 px, growing the font atlas; capped
+  (Now Playing private memory 50 → 43 MB).
+- Similarity rule refinement: three skips drop an artist for the session, but never the
+  seed's own artist (found by the end-to-end radio test).
+
 ## 0.1.0 — 2026-11-14 (first build)
 
 ### Added

@@ -221,7 +221,8 @@ pub fn apply(ctx: &egui::Context, theme: &Theme, o: &ApplyOpts) {
     v.panel_fill = ca(t.panel, panel_alpha);
     v.window_fill = c(t.panel);
     v.extreme_bg_color = c(t.background);
-    v.faint_bg_color = c(t.surface);
+    v.faint_bg_color = c(t.panel);
+    v.text_edit_bg_color = Some(c(lerp_rgb(t.background, t.surface, 0.55)));
     v.override_text_color = Some(c(t.text));
     v.hyperlink_color = c(accent);
     // seafoam for selected controls, progress and toggles; dark text on it for contrast

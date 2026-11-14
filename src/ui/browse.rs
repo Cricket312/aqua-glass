@@ -526,7 +526,7 @@ pub fn now_playing(app: &mut AquaApp, ui: &mut Ui) {
                 ui.vertical(|ui| body(app, ui));
             });
         } else {
-            let size = (ui.available_width() * 0.7).clamp(200.0, 420.0);
+            let size = (ui.available_width() * 0.6).clamp(180.0, 340.0);
             ui.vertical_centered(|ui| {
                 widgets::artwork(ui, tex.as_ref(), size, 10);
             });
@@ -535,8 +535,11 @@ pub fn now_playing(app: &mut AquaApp, ui: &mut Ui) {
         }
         if lyrics_on && app.cfg.general.right_panel != crate::config::RightPanel::Lyrics {
             ui.add_space(14.0);
-            ui.set_max_height(520.0);
-            super::pages::lyrics_panel(app, ui, false);
+            let w = ui.available_width();
+            ui.allocate_ui(egui::vec2(w, 420.0), |ui| {
+                ui.set_min_height(200.0);
+                super::pages::lyrics_panel(app, ui, false);
+            });
         }
     });
 }
