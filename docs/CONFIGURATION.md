@@ -20,6 +20,7 @@ Other files in the data folder:
 |---|---|
 | `settings.toml` | this configuration |
 | `measurements.toml` | per-feature RAM deltas measured on this PC |
+| `radio-selftest-*.txt` | Last.fm self-test reports |
 | `history.json` | last 500 plays (local only; Settings › Playback › Clear listening history) |
 | `cache/local-art/` | cover art extracted from local files |
 | `themes/*.toml` | user themes (declarative; no scripts) |
@@ -62,6 +63,7 @@ preset applies.
 | `window_backdrop` | Windows 11 Acrylic Backdrop | MODERATE | +2–12 MB | `translucent_panels` | ✔ |  |  |  | ✔ |
 | `custom_font` | Custom Font | MODERATE | +0.5–15 MB |  | ✔ |  |  | ✔ | ✔ |
 | `artwork_in_lists` | Artwork Thumbnails in Lists | MODERATE | +4–15 MB |  |  |  | ✔ | ✔ | ✔ |
+| `sidebar_playlists` | Playlists in Sidebar | LOW | +0–0.5 MB |  |  |  |  |  |  |
 | `sidebar_branding` | Show Name in Collapsed Sidebar | LOW | +0–0 MB |  | ✔ |  |  |  |  |
 
 ### Backgrounds
@@ -76,6 +78,7 @@ preset applies.
 | `bg_animated` | Animated Background | LOW | +0–2 MB |  | ✔ |  |  |  | ✔ |
 | `bg_parallax` | Parallax Effect | LOW | +0–0.5 MB |  | ✔ |  |  |  | ✔ |
 | `bg_transitions` | Background Transitions | MODERATE | +0.5–15 MB |  | ✔ |  |  | ✔ | ✔ |
+| `bg_gradient` | Subtle Background Gradient | LOW | +0–0.5 MB |  | ✔ |  | ✔ | ✔ | ✔ |
 
 ### Playback
 
@@ -185,7 +188,7 @@ preset applies.
 
 | Section | Keys |
 |---|---|
-| `[general]` | `last_settings_category`, `window_pos`, `window_size`, `ui_scale` (0.6–2.5), `sidebar_width`, `sidebar_collapsed`, `right_panel` (`Closed`/`Queue`/`Lyrics`/`Info`) |
+| `[general]` | `last_settings_category`, `window_pos`, `window_size`, `ui_scale` (0.6–2.5), `sidebar_width`, `sidebar_collapsed`, `right_panel` (`Closed`/`Queue`/`Radio`/`Lyrics`/`Info`) |
 | `[radio]` | `strength` (`Familiar`/`Balanced`/`Adventurous`/`DeepDiscovery`), `target` (5–50, default 15), `threshold` (default 5), `provider` (`Automatic`/`Spotify`/`Local`/`YouTube`) |
 | `[appearance]` | `theme` (name), `font_path`, `player_bar_layout` (`Classic`/`Centered`/`Compact`), `player_bar_height` |
 | `[background]` | `image_path`, `blur_radius` (0–80), `dim` (0–1), `opacity` (0–1), `anim_speed`, `anim_fps` (5–60), `transition_ms`, `scale` (`Fill`/`Fit`/`Stretch`/`Center`), `parallax_px` |

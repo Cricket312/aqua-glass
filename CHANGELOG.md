@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.3.0 — 2026-11-14 (reference design + Last.fm live testing)
+
+### Changed — matched to the supplied Aqua Glass concept image
+- Sidebar: pill-shaped active item (seafoam tint + border), larger rows, divider before
+  Settings, RAM Usage card (chip icon, MB / target, seafoam bar, opens Performance).
+  The playlist list in the sidebar is now optional ("Playlists in Sidebar", off by default).
+- Top bar: back and **forward** buttons; centred search pill with a filter button (service
+  filter + account status) replacing the chips.
+- Home: large greeting, featured banner (blurred cover backdrop, sharp cover, Play pill,
+  import, pager dots — built only from your own playlists/top mix), art-first cards without
+  boxes, landscape cards for Made For You / Top Mixes, "Show all ›".
+- Bottom player: seafoam circular play/pause, frameless icons, expand (Now Playing) button.
+- Right panel: rounded card with a Queue / Similarity Radio / Lyrics segmented control;
+  Now Playing row with like; "Up Next (n)" with shuffle/repeat; artwork rows with durations.
+- New optional "Subtle Background Gradient" (static, no textures or repaints; on in
+  Balanced and above).
+
+### Added
+- `radio::self_test` live check of Similarity Radio against the real Last.fm API, available
+  as `aqua-glass.exe --radio-selftest ["Artist" "Title"]` (prints in the terminal, saves a
+  report, exit code), as a **Run self-test** button in Settings › Playback › Similarity
+  Radio, and as ignored `cargo test --test lastfm_live` tests. Guide: docs/TESTING-LASTFM.md.
+
 ## 0.2.0 — 2026-11-14 (redesign + Similarity Radio)
 
 ### Changed — interface redesign

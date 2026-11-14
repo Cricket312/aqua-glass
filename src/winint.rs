@@ -151,7 +151,7 @@ mod imp {
         let eng = engine.clone();
         let mut last_key = String::new();
         let mut last_playing = None;
-        engine.add_listener(Box::new(move |st: &PlayerState| {
+        engine.add_listener(Box::new(move |st: &crate::audio::engine::PlayerState| {
             let mut g = c2.lock().unwrap();
             let Some(c) = g.as_mut() else { return };
             if let Some(t) = &st.current {

@@ -47,6 +47,16 @@ DISPLAY=:99 python3 bench/soak.py <music-dir> 10 bench/soak-linux-dev.json Enhan
 `examples/make_config.rs` (preset + extra toggles), launches the release binary with
 `--page <page> <audio files…>`, waits, samples, and terminates it.
 
+## Version 0.3.0 (reference design)
+
+Same procedure, raw data in `bench/results-linux-dev-v0.3.json`. Private memory is unchanged by
+the concept-matched interface: Minimal idle **41.4 MB**, Balanced playing **41.9 MB**, Now
+Playing **42.9 MB**, Enhanced **44.2 MB**, Fully Customized + background image **45.6 MB**.
+The new static background gradient costs no memory; with software rendering (llvmpipe) its
+large translucent areas add fill-rate cost on each repaint (on a GPU this is negligible).
+CPU figures in this run were noisy (e.g. Minimal idle read higher than Balanced idle), so no
+CPU conclusions are drawn from it.
+
 ## Version 0.2.0 (redesign + Similarity Radio)
 
 Same procedure and environment, raw data in `bench/results-linux-dev-v0.2.json`:

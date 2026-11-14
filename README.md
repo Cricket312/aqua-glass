@@ -42,7 +42,7 @@ RAM impact.
 10. [Architecture](#architecture)
 11. [Known limitations](#known-limitations)
 
-Further reading: [Configuration reference](docs/CONFIGURATION.md) ·
+Further reading: [Configuration reference](docs/CONFIGURATION.md) · [Testing Similarity Radio with Last.fm](docs/TESTING-LASTFM.md) ·
 [Benchmarks](docs/BENCHMARKS.md) · [Changelog](CHANGELOG.md)
 
 ---
@@ -142,13 +142,16 @@ are never swapped silently.
 
 ## Using Aqua Glass
 
-* **Layout:** collapsible sidebar (Home, Search, Library, Playlists, Artists, Albums,
-  Discover, Queue, Playlist Transfer, Settings, your playlists, and the compact RAM
-  indicator), a top bar with the search field and service filter, the main content area,
-  the persistent bottom player, and an optional right panel (Queue & Radio / Lyrics / Now
-  Playing) that is only shown when you open it. Click the artwork in the player for the
+* **Layout** (after the Aqua Glass concept design):
+  * a collapsible sidebar with pill navigation (Home, Search, Library, Playlists, Artists,
+    Albums, Discover, Queue, Playlist Transfer, Settings) and the RAM Usage card;
+  * a top bar with back/forward and a centred search pill (its ⚙ button sets the service
+    filter and shows account status);
+  * the main content area and the persistent bottom player;
+  * an optional right panel with Queue / Similarity Radio / Lyrics tabs, shown only when
+    you open it. Click the artwork in the player for the
   Now Playing page. There are no social features.
-* **Home** shows Recently Played, Favorite Playlists, Made For You (Spotify-made playlists
+* **Home** shows a featured banner (from your own playlists or top mix), Recently Played, Favorite Playlists, Made For You (Spotify-made playlists
   you follow), Recently Added, Your Top Mixes, Discover New Music, Recently Imported Spotify
   Playlists and Local Music — each row appears only when there is real data for it.
 * **Service filter** (top bar): All / Spotify / YouTube / Local. Disabled services do no background work.
@@ -221,7 +224,7 @@ Open settings with the always-visible **⚙ Settings** button, `Ctrl+,`, the tra
 the search box finds settings by name, description, category or keywords — e.g. "RAM",
 "lyrics", "Discord", "background".
 
-Every optional feature (76 of them) has its own toggle, description, dependency info and a
+Every optional feature (78 of them) has its own toggle, description, dependency info and a
 RAM badge:
 
 ```
@@ -311,7 +314,7 @@ cargo build --release --no-default-features --features local-files
 cargo test                       # unit + integration tests
 ```
 
-* 85 unit tests (including Similarity Radio: the four discovery modes differ as specified,
+* 86 unit tests (including Similarity Radio and its live self-test harness: the four discovery modes differ as specified,
   duplicate/artist/recently-played/skip/like rules, unplayable candidates dropped, Last.fm
   response parsing, history bounds), plus: config persistence/migration/invalid files, feature registry and
   presets, disable/restore visuals, shortcut parsing and conflicts, theme loading and
@@ -393,13 +396,14 @@ Honest list of what is not done or not verified:
   network route to them in the build environment). Parsing is tested against fixtures that
   follow the documented response formats, but end-to-end sign-in, sync, playback and
   transfers need verification with real accounts.
-* **Similarity Radio with Last.fm was not tested live** (no network route to Last.fm here);
-  the Last.fm parsing is tested against the documented JSON format and the selection logic
-  against a deterministic in-memory similarity graph. The end-to-end radio flow (start from
-  search, fill, refill, manual priority, no duplicates) was tested with the artist/album
-  fallback source and real audio playback.
-* No reference screenshots were available while redesigning; the layout follows the written
-  specification (Spicetify-style sidebar / content / bottom player / optional right panel).
+* **Similarity Radio has not yet run against real Last.fm responses**: the build sandbox
+  blocks `ws.audioscrobbler.com`. Parsing is tested against Last.fm's documented JSON, the
+  pipeline against a deterministic similarity graph, and the end-to-end flow (start from
+  search, fill, refill, manual priority, no duplicates) with the artist/album fallback and real
+  audio. To run the live checks on your PC (in-app button, `--radio-selftest`, or
+  `cargo test --test lastfm_live -- --ignored`), see **[docs/TESTING-LASTFM.md](docs/TESTING-LASTFM.md)**.
+* The interface follows the supplied Aqua Glass concept image. The window keeps the native
+  Windows title bar (with dark mode) instead of the concept's custom-drawn one.
 * YouTube Music playback is not in-app (see above). No YouTube albums, artists pages,
   recently played or lyrics from YouTube.
 * Not implemented: crossfade, WASAPI exclusive mode, lyric translations, lyric blur/

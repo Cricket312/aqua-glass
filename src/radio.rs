@@ -712,7 +712,15 @@ mod tests {
         let mut tracks = Map::new();
         tracks.insert(
             "Seed|Song".to_string(),
-            (0..60).map(|i| sim(&format!("A{}", i % 20), &format!("S{i}"), 1.0 - i as f32 / 60.0, i, 100_000)).chain(std::iter::once(sim("Seed", "Other", 0.95, 60, 1000))).collect(),
+            {
+                // ordered by similarity, like real Last.fm responses
+                let mut v: Vec<Similar> = (0..60).map(|i| sim(&format!("A{}", i % 20), &format!("S{i}"), 1.0 - i as f32 / 60.0, i, 100_000)).chain(std::iter::once(sim("Seed", "Other", 0.95, 60, 1000))).collect();
+                v.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
+                for (i, x) in v.iter_mut().enumerate() {
+                    x.rank = i;
+                }
+                v
+            },
         );
         let artists: Vec<(String, f32)> = (0..60).map(|i| (format!("R{i}"), 1.0 - i as f32 / 60.0)).collect();
         let mut am = Map::new();
@@ -831,6 +839,29 @@ mod tests {
     }
 
     #[test]
+    fn self_test_harness_passes_on_a_well_formed_graph() {
+        let t = self_test_with(&fake(), "Seed", "Song", &[]);
+        assert!(t.ok(), "{}", t.report);
+        assert!(t.report.contains("Deep Discovery"));
+        // and fails clearly when the source returns nothing
+        struct Empty;
+        impl Source for Empty {
+            fn similar_tracks(&self, _: &str, _: &str, _: u32) -> anyhow::Result<Vec<Similar>> {
+                Ok(vec![])
+            }
+            fn similar_artists(&self, _: &str, _: u32) -> anyhow::Result<Vec<(String, f32)>> {
+                Ok(vec![])
+            }
+            fn top_tracks(&self, _: &str, _: u32) -> anyhow::Result<Vec<Similar>> {
+                Ok(vec![])
+            }
+        }
+        let e = self_test_with(&Empty, "x", "y", &[]);
+        assert!(!e.ok());
+        assert!(self_test("", "a", "b", &[]).report.contains("No Last.fm API key"));
+    }
+
+    #[test]
     fn fallback_uses_same_artist_and_album_from_library() {
         let lib = vec![
             Track { title: "x1".into(), artists: vec!["Seed".into()], album: "AL".into(), ..Default::default() },
@@ -843,4 +874,127 @@ mod tests {
         assert_eq!(c.len(), 2);
         assert!(c.iter().all(|c| c.track.is_some()));
     }
+}
+
+// ---------------------------------------------------------------------------
+// Live self-test against the real Last.fm API (run on a PC with network access)
+
+#[derive(Debug, Clone)]
+pub struct SelfTest {
+    pub report: String,
+    pub passed: usize,
+    pub failed: usize,
+}
+
+impl SelfTest {
+    pub fn ok(&self) -> bool {
+        self.failed == 0 && self.passed > 0
+    }
+    pub fn ok_or_empty(&self) -> bool {
+        self.failed == 0
+    }
+}
+
+/// Query Last.fm for real, run every discovery mode on the result and check the
+/// response shape and mode behaviour. `local` (optional) is used to report how many
+/// recommendations would be playable from the local library.
+pub fn self_test(key: &str, artist: &str, title: &str, local: &[Track]) -> SelfTest {
+    if key.trim().is_empty() {
+        return SelfTest {
+            report: format!("Aqua Glass {} — Similarity Radio live self-test\nNo Last.fm API key. Set AQUA_LASTFM_KEY or save a key in Settings › Playback › Similarity Radio.\n", env!("CARGO_PKG_VERSION")),
+            passed: 0,
+            failed: 1,
+        };
+    }
+    self_test_with(&LastFm::new(key), artist, title, local)
+}
+
+/// The self-test against any similarity source (Last.fm in production).
+pub fn self_test_with(lf: &dyn Source, artist: &str, title: &str, local: &[Track]) -> SelfTest {
+    use std::fmt::Write;
+    let mut r = String::new();
+    let (mut passed, mut failed) = (0usize, 0usize);
+    let mut check = |r: &mut String, ok: bool, what: &str| {
+        let _ = writeln!(r, "  [{}] {what}", if ok { "PASS" } else { "FAIL" });
+        if ok {
+            passed += 1;
+        } else {
+            failed += 1;
+        }
+    };
+    let _ = writeln!(r, "Aqua Glass {} — Similarity Radio live self-test", env!("CARGO_PKG_VERSION"));
+    let _ = writeln!(r, "Date (unix): {}", crate::util::now_unix());
+    let _ = writeln!(r, "Seed: {artist} — {title}\n");
+    let seed = Track { title: title.into(), artists: vec![artist.into()], ..Default::default() };
+
+    let _ = writeln!(r, "1. Raw API responses");
+    let t0 = Instant::now();
+    let st = lf.similar_tracks(artist, title, 100);
+    let _ = writeln!(r, "  track.getSimilar: {:?} in {} ms", st.as_ref().map(|v| v.len()).map_err(|e| e.to_string()), t0.elapsed().as_millis());
+    let t1 = Instant::now();
+    let sa = lf.similar_artists(artist, 60);
+    let _ = writeln!(r, "  artist.getSimilar: {:?} in {} ms", sa.as_ref().map(|v| v.len()).map_err(|e| e.to_string()), t1.elapsed().as_millis());
+    let st = match st {
+        Ok(v) => v,
+        Err(e) => {
+            let _ = writeln!(r, "\nLast.fm request failed: {e}");
+            check(&mut r, false, "Last.fm reachable and key accepted");
+            return SelfTest { report: r, passed, failed };
+        }
+    };
+    let sa = sa.unwrap_or_default();
+    check(&mut r, true, "Last.fm reachable and key accepted");
+    check(&mut r, !st.is_empty(), "track.getSimilar returned similar tracks for the seed");
+    check(&mut r, st.iter().all(|s| (0.0..=1.0).contains(&s.score)), "similarity scores are within 0..1");
+    check(&mut r, st.windows(2).all(|w| w[0].score + 1e-6 >= w[1].score), "similar tracks are ordered by similarity");
+    check(&mut r, !sa.is_empty(), "artist.getSimilar returned related artists");
+    if let Some((a, _)) = sa.first() {
+        let tt = lf.top_tracks(a, 10);
+        let _ = writeln!(r, "  artist.getTopTracks({a}): {:?}", tt.as_ref().map(|v| v.len()).map_err(|e| e.to_string()));
+        check(&mut r, tt.as_ref().map(|v| !v.is_empty()).unwrap_or(false), "artist.getTopTracks returned tracks");
+        if let Ok(v) = &tt {
+            check(&mut r, v.iter().any(|x| x.listeners.is_some()), "top tracks include listener counts (used by Deep Discovery)");
+        }
+    }
+    let _ = writeln!(r, "  first similar tracks: {}", st.iter().take(5).map(|s| format!("{} — {} ({:.2})", s.artist, s.title, s.score)).collect::<Vec<_>>().join("; "));
+
+    let _ = writeln!(r, "\n2. Discovery modes (ranking with default rules, empty history)");
+    let index: HashMap<String, Track> = local.iter().map(|t| (track_ident(t), t.clone())).collect();
+    let mut artist_sets: Vec<(Strength, HashSet<String>)> = Vec::new();
+    let mut rng = rand::rng();
+    for strength in Strength::ALL {
+        let t = Instant::now();
+        match gather(&seed, strength, lf) {
+            Ok(c) => {
+                let n = c.len();
+                let ranked = rank(c, &seed, &Prefs { strength, ..Prefs::default() }, &Session::default(), &|_| false, &|_| false, &mut rng);
+                let top: Vec<&Cand> = ranked.iter().take(15).collect();
+                let artists: HashSet<String> = top.iter().map(|c| c.artist.to_lowercase()).collect();
+                let playable = top.iter().filter(|c| index.contains_key(&ident(&c.artist, &c.title))).count();
+                let _ = writeln!(r, "  {:<15} {n:>4} candidates, top 15 from {} artists, {playable} playable from local library, {} ms", strength.label(), artists.len(), t.elapsed().as_millis());
+                for c in top.iter().take(15) {
+                    let _ = writeln!(r, "      {:.2}  {} — {}{}", c.score, c.artist, c.title, c.listeners.map(|l| format!("  ({l} listeners)")).unwrap_or_default());
+                }
+                check(&mut r, top.len() >= 10, &format!("{}: at least 10 recommendations", strength.label()));
+                check(&mut r, top.iter().all(|c| ident(&c.artist, &c.title) != track_ident(&seed)), &format!("{}: seed not recommended", strength.label()));
+                if strength == Strength::DeepDiscovery {
+                    check(&mut r, top.iter().all(|c| !c.artist.eq_ignore_ascii_case(artist)), "Deep Discovery: excludes the seed artist");
+                }
+                artist_sets.push((strength, artists));
+            }
+            Err(e) => {
+                let _ = writeln!(r, "  {:<15} error: {e}", strength.label());
+                check(&mut r, false, &format!("{}: gather succeeded", strength.label()));
+            }
+        }
+    }
+    let _ = writeln!(r, "\n3. Mode differences");
+    let get = |s: Strength| artist_sets.iter().find(|x| x.0 == s).map(|x| x.1.clone()).unwrap_or_default();
+    let (fam, deep, adv) = (get(Strength::Familiar), get(Strength::DeepDiscovery), get(Strength::Adventurous));
+    let jac = |a: &HashSet<String>, b: &HashSet<String>| if a.is_empty() && b.is_empty() { 1.0 } else { a.intersection(b).count() as f32 / a.union(b).count().max(1) as f32 };
+    let _ = writeln!(r, "  artist overlap Familiar↔Adventurous {:.2}, Familiar↔Deep {:.2}", jac(&fam, &adv), jac(&fam, &deep));
+    check(&mut r, jac(&fam, &deep) < 0.5, "Familiar and Deep Discovery recommend mostly different artists");
+    check(&mut r, adv.len() >= fam.len().min(10) / 2, "Adventurous draws from a varied set of artists");
+    let _ = writeln!(r, "\nResult: {passed} passed, {failed} failed");
+    SelfTest { report: r, passed, failed }
 }

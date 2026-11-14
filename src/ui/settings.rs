@@ -20,6 +20,9 @@ pub struct SettingsUi {
     pub rename_to: String,
     pub devices: Option<Vec<String>>,
     pub status: String,
+    pub selftest_artist: String,
+    pub selftest_title: String,
+    pub selftest_result: std::sync::Arc<std::sync::Mutex<Option<String>>>,
 }
 
 impl Default for Category {
@@ -639,6 +642,47 @@ fn radio_settings(app: &mut AquaApp, ui: &mut Ui) {
             }
         });
         widgets::note(ui, "Free key: last.fm/api/account/create. Aqua Glass sends only the seed song's artist and title (and related artist names) to Last.fm; no account or scrobbling is involved.");
+        ui.add_space(6.0);
+        ui.label(RichText::new("Live self-test").strong());
+        widgets::note(ui, "Queries the real Last.fm API with your key, runs all four discovery modes and checks the results. The report is also saved to the data folder.");
+        ui.horizontal(|ui| {
+            if app.settings.selftest_artist.is_empty() {
+                let (a, t) = app.state.current.as_ref().map(|t| (t.artists.first().cloned().unwrap_or_default(), t.title.clone())).filter(|(a, _)| !a.is_empty()).unwrap_or(("Radiohead".into(), "Karma Police".into()));
+                app.settings.selftest_artist = a;
+                app.settings.selftest_title = t;
+            }
+            ui.add(egui::TextEdit::singleline(&mut app.settings.selftest_artist).hint_text("Artist").desired_width(150.0));
+            ui.add(egui::TextEdit::singleline(&mut app.settings.selftest_title).hint_text("Title").desired_width(170.0));
+            let running = app.jobs.is_running("Last.fm self-test");
+            if running {
+                ui.spinner();
+            } else if ui.add_enabled(!app.lastfm_key.is_empty(), egui::Button::new("Run self-test")).clicked() {
+                let (key, a, t) = (app.lastfm_key.clone(), app.settings.selftest_artist.clone(), app.settings.selftest_title.clone());
+                let lib = app.library.clone();
+                let out = app.settings.selftest_result.clone();
+                app.jobs.spawn("Last.fm self-test", move |h| {
+                    let local = lib.lock().unwrap().tracks(ProviderKind::Local, crate::library::LOCAL_ALL_ID).cloned().unwrap_or_default();
+                    let r = crate::radio::self_test(&key, &a, &t, &local);
+                    let path = crate::util::data_dir().join(format!("radio-selftest-{}.txt", crate::util::now_unix()));
+                    let _ = crate::util::atomic_write(&path, r.report.as_bytes());
+                    let summary = format!("Last.fm self-test: {} passed, {} failed — report saved to {}", r.passed, r.failed, path.display());
+                    let failed = !r.ok_or_empty();
+                    *out.lock().unwrap() = Some(r.report);
+                    h.send(super::jobs::Msg::Toast(summary, failed));
+                });
+            }
+        });
+        let res = app.settings.selftest_result.lock().unwrap().clone();
+        if let Some(rep) = res {
+            egui::CollapsingHeader::new("Last self-test report").default_open(true).show(ui, |ui| {
+                egui::ScrollArea::vertical().max_height(260.0).show(ui, |ui| {
+                    ui.add(egui::Label::new(RichText::new(&rep).monospace().size(11.5)).wrap());
+                });
+                if ui.small_button("Copy report").clicked() {
+                    ui.ctx().copy_text(rep.clone());
+                }
+            });
+        }
         if ui.button("Clear listening history").on_hover_text("Used for Recently Played, Prefer Unheard and Avoid Recently Played; stored only on this PC").clicked() {
             app.history.lock().unwrap().clear();
             app.toast("Listening history cleared.", false);
