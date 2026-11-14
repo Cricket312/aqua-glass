@@ -3,6 +3,8 @@
 pub mod audio;
 pub mod config;
 pub mod features;
+pub mod history;
+pub mod radio;
 pub mod library;
 pub mod matching;
 pub mod model;

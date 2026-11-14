@@ -10,327 +10,6 @@ use crate::model::*;
 use crate::util::fmt_ms;
 use eframe::egui::{self, Color32, RichText, Ui};
 
-pub fn shell(app: &mut AquaApp, ui: &mut Ui) {
-    let translucent = app.cfg.active("translucent_panels") || app.cfg.active("window_backdrop");
-    let panel_fill = ui.visuals().panel_fill;
-    let fill = if translucent { panel_fill } else { panel_fill.to_opaque() };
-    let bar_h = match app.cfg.appearance.player_bar_layout {
-        PlayerBarLayout::Compact => 56.0,
-        _ => app.cfg.appearance.player_bar_height,
-    };
-    egui::Panel::bottom("player_bar")
-        .exact_size(bar_h)
-        .frame(egui::Frame::new().fill(fill).inner_margin(egui::Margin::symmetric(12, 6)))
-        .show(ui, |ui| player_bar(app, ui));
-    egui::Panel::left("sidebar")
-        .resizable(true)
-        .default_size(app.cfg.general.sidebar_width)
-        .size_range(150.0..=400.0)
-        .frame(egui::Frame::new().fill(fill).inner_margin(egui::Margin::same(10)))
-        .show(ui, |ui| {
-            let w = ui.available_width() + 20.0;
-            if (w - app.cfg.general.sidebar_width).abs() > 2.0 && ui.input(|i| !i.pointer.any_down()) {
-                app.cfg.general.sidebar_width = w;
-                app.mark_dirty();
-            }
-            sidebar(app, ui)
-        });
-    let central_fill = if app.bg.active { Color32::TRANSPARENT } else { ui.visuals().extreme_bg_color };
-    egui::CentralPanel::default()
-        .frame(egui::Frame::new().fill(central_fill).inner_margin(egui::Margin::symmetric(18, 12)))
-        .show(ui, |ui| {
-            let page = app.page.clone();
-            match page {
-                Page::Home => home(app, ui),
-                Page::Search => search(app, ui),
-                Page::Library => library(app, ui),
-                Page::Playlists => playlists_page(app, ui),
-                Page::Artists => artists_page(app, ui),
-                Page::Albums => albums_page(app, ui),
-                Page::NowPlaying => now_playing(app, ui),
-                Page::Queue => queue(app, ui),
-                Page::Transfer => super::transfer_ui::page(app, ui),
-                Page::Settings => super::settings::page(app, ui),
-                Page::Playlist(p, id) => playlist_view(app, ui, p, &id),
-                Page::Album(a) => album_view(app, ui, &a),
-                Page::Artist(a) => artist_view(app, ui, &a),
-            }
-        });
-}
-
-fn nav(app: &mut AquaApp, ui: &mut Ui, ic: &str, label: &str, page: Page) {
-    let sel = app.page == page;
-    let r = ui.add_sized([ui.available_width(), 30.0], egui::Button::selectable(sel, format!("{ic}  {label}")));
-    if r.clicked() {
-        app.navigate(page);
-    }
-}
-
-fn sidebar(app: &mut AquaApp, ui: &mut Ui) {
-    ui.horizontal(|ui| {
-        ui.label(RichText::new("💧").color(app.accent()).size(22.0));
-        ui.label(RichText::new("Aqua Glass").strong().size(19.0));
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            // application menu
-            ui.menu_button("☰", |ui| {
-                if ui.button(format!("{}  Settings   (Ctrl+,)", icon::SETTINGS())).clicked() {
-                    app.navigate(Page::Settings);
-                    ui.close();
-                }
-                if ui.button(format!("{}  Mini-player", icon::MINI())).clicked() {
-                    app.do_action(crate::shortcuts::Action::ToggleMiniPlayer, &ui.ctx().clone());
-                    ui.close();
-                }
-                if ui.button(format!("{}  Playlist Transfer", icon::TRANSFER())).clicked() {
-                    app.navigate(Page::Transfer);
-                    ui.close();
-                }
-                if ui.button(format!("{}  Sync library now", icon::SYNC())).clicked() {
-                    app.sync_now(ProviderKind::Spotify, false);
-                    app.sync_now(ProviderKind::YouTube, false);
-                    ui.close();
-                }
-                ui.separator();
-                if ui.button("Disable all visual customizations").clicked() {
-                    app.cfg.disable_all_visual();
-                    app.mark_dirty();
-                    ui.close();
-                }
-                if ui.button("Quit").clicked() {
-                    let _ = app.ui_tx.send(crate::winint::UiCmd::Quit);
-                    ui.close();
-                }
-            });
-        });
-    });
-    ui.add_space(8.0);
-    nav(app, ui, icon::HOME(), "Home", Page::Home);
-    nav(app, ui, icon::SEARCH(), "Search", Page::Search);
-    nav(app, ui, icon::LIBRARY(), "Library", Page::Library);
-    nav(app, ui, icon::PLAYLIST(), "Playlists", Page::Playlists);
-    nav(app, ui, icon::ARTIST(), "Artists", Page::Artists);
-    nav(app, ui, icon::ALBUM(), "Albums", Page::Albums);
-    nav(app, ui, icon::NOW(), "Now Playing", Page::NowPlaying);
-    nav(app, ui, icon::QUEUE(), "Queue", Page::Queue);
-    nav(app, ui, icon::TRANSFER(), "Playlist Transfer", Page::Transfer);
-    ui.add_space(10.0);
-    ui.label(RichText::new("SERVICES").small().weak());
-    ui.horizontal_wrapped(|ui| {
-        let mut f = app.filter;
-        ui.selectable_value(&mut f, Filter::All, "All");
-        for p in [ProviderKind::Spotify, ProviderKind::YouTube, ProviderKind::Local] {
-            if app.provider_enabled(p) {
-                ui.selectable_value(&mut f, Filter::Only(p), p.short()).on_hover_text(format!("Show only {}", p.label()));
-            }
-        }
-        app.filter = f;
-    });
-    let dot = |ui: &mut Ui, on: bool, label: &str, tip: &str| {
-        ui.horizontal(|ui| {
-            ui.label(RichText::new("⏺").color(if on { Color32::from_rgb(52, 211, 153) } else { Color32::GRAY }));
-            ui.label(RichText::new(label).small()).on_hover_text(tip);
-        });
-    };
-    if app.cfg.services.spotify_enabled {
-        let st = app.state.spotify.clone();
-        let tip = match &st {
-            SpotifyStatus::Ready => "Library + Premium playback ready".to_string(),
-            SpotifyStatus::Unavailable(e) => format!("Playback unavailable: {e}"),
-            _ => app.sp_status.clone(),
-        };
-        dot(ui, app.spotify.is_signed_in(), "Spotify", &tip);
-    }
-    if app.cfg.services.youtube_enabled {
-        dot(ui, app.youtube.is_signed_in(), "YouTube Music", &app.yt_status.clone());
-    }
-
-    ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
-        ui.add_space(2.0);
-        // permanently visible settings button + live RAM
-        ui.horizontal(|ui| {
-            let r = ui.add(egui::Button::new(RichText::new(format!("{}  Settings", icon::SETTINGS())).size(15.0))).on_hover_text("Settings (Ctrl+,)");
-            if r.clicked() {
-                app.navigate(Page::Settings);
-            }
-            let mb = app.monitor.current_mb();
-            let target = app.cfg.perf.ram_target_mb as f32;
-            let c = if mb > target { widgets::impact_color(crate::features::Impact::VeryHigh) } else { ui.visuals().weak_text_color() };
-            let r = ui.add(egui::Label::new(RichText::new(format!("{mb:.0} MB")).small().color(c)).sense(egui::Sense::click()));
-            if r.on_hover_text("Private working set — click for the Performance dashboard").clicked() {
-                app.settings.category = crate::features::Category::Performance;
-                app.navigate(Page::Settings);
-            }
-        });
-        let jobs: Vec<super::jobs::JobInfo> = app.jobs.active.lock().unwrap().values().cloned().collect();
-        for j in jobs.iter().take(3) {
-            ui.horizontal(|ui| {
-                ui.spinner();
-                let p = j.progress.filter(|(_, t)| *t > 0).map(|(d, t)| format!(" {d}/{t}")).unwrap_or_default();
-                ui.label(RichText::new(format!("{}{p}", j.label)).small().weak());
-            });
-        }
-    });
-}
-
-fn player_bar(app: &mut AquaApp, ui: &mut Ui) {
-    let st = app.state.clone();
-    let pos = app.engine.position_ms();
-    let dur = st.duration_ms;
-    let layout = app.cfg.appearance.player_bar_layout;
-    let art_size = if layout == PlayerBarLayout::Compact { 40.0 } else { (ui.available_height() - 6.0).clamp(40.0, 72.0) };
-    ui.horizontal_centered(|ui| {
-        // left: track info
-        let left_w = if layout == PlayerBarLayout::Centered { ui.available_width() * 0.28 } else { ui.available_width() * 0.30 };
-        ui.allocate_ui_with_layout(egui::vec2(left_w, ui.available_height()), egui::Layout::left_to_right(egui::Align::Center), |ui| {
-            if let Some(t) = &st.current {
-                let tex = app.artwork.lock().unwrap().get(&t.artwork_url, Kind::Cover);
-                if widgets::artwork(ui, tex.as_ref(), art_size, 6).clicked() {
-                    app.navigate(Page::NowPlaying);
-                }
-                ui.vertical(|ui| {
-                    ui.add(egui::Label::new(RichText::new(&t.title).strong()).truncate());
-                    ui.horizontal(|ui| {
-                        widgets::provider_badge(ui, t.provider);
-                        ui.add(egui::Label::new(RichText::new(t.artist_line()).weak()).truncate());
-                    });
-                });
-            } else {
-                widgets::artwork(ui, None, art_size, 6);
-                ui.label(RichText::new("Nothing playing").weak());
-            }
-        });
-        // center: controls + progress
-        let center_w = ui.available_width() * if layout == PlayerBarLayout::Centered { 0.62 } else { 0.55 };
-        ui.allocate_ui_with_layout(egui::vec2(center_w, ui.available_height()), egui::Layout::top_down(egui::Align::Center), |ui| {
-            ui.horizontal(|ui| {
-                let w = 5.0 * 34.0;
-                ui.add_space(((ui.available_width() - w) / 2.0).max(0.0));
-                let accent = app.accent();
-                let sh = ui.add(egui::Button::new(RichText::new(icon::SHUFFLE()).color(if st.shuffle { accent } else { ui.visuals().weak_text_color() })).frame(false)).on_hover_text("Shuffle");
-                if sh.clicked() {
-                    app.engine.send(Cmd::SetShuffle(!st.shuffle));
-                    app.cfg.playback.shuffle = !st.shuffle;
-                    app.mark_dirty();
-                }
-                if ui.add(egui::Button::new(RichText::new(icon::PREV()).size(18.0)).frame(false)).on_hover_text("Previous").clicked() {
-                    app.engine.send(Cmd::Prev);
-                }
-                let pi = if st.playing { icon::PAUSE() } else { icon::PLAY() };
-                if ui.add(egui::Button::new(RichText::new(pi).size(22.0).color(accent)).corner_radius(18)).on_hover_text("Play / Pause (Space)").clicked() {
-                    app.engine.send(Cmd::Toggle);
-                }
-                if ui.add(egui::Button::new(RichText::new(icon::NEXT()).size(18.0)).frame(false)).on_hover_text("Next").clicked() {
-                    app.engine.send(Cmd::Next);
-                }
-                let (ri, rc) = match st.repeat {
-                    RepeatMode::Off => (icon::REPEAT(), ui.visuals().weak_text_color()),
-                    RepeatMode::All => (icon::REPEAT(), accent),
-                    RepeatMode::One => (icon::REPEAT_ONE(), accent),
-                };
-                if ui.add(egui::Button::new(RichText::new(ri).color(rc)).frame(false)).on_hover_text("Repeat: off / all / one").clicked() {
-                    let r = match st.repeat {
-                        RepeatMode::Off => RepeatMode::All,
-                        RepeatMode::All => RepeatMode::One,
-                        RepeatMode::One => RepeatMode::Off,
-                    };
-                    app.engine.send(Cmd::SetRepeat(r));
-                    app.cfg.playback.repeat = r;
-                    app.mark_dirty();
-                }
-            });
-            if layout != PlayerBarLayout::Compact {
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new(fmt_ms(pos)).small().monospace());
-                    let mut p = pos as f32;
-                    let w = ui.available_width() - 48.0;
-                    ui.spacing_mut().slider_width = w.max(60.0);
-                    let r = ui.add_enabled(dur > 0 && !st.external, egui::Slider::new(&mut p, 0.0..=(dur.max(1) as f32)).show_value(false).trailing_fill(true));
-                    if r.drag_stopped() || (r.clicked() && !r.dragged()) {
-                        app.engine.send(Cmd::Seek(p as u64));
-                    }
-                    ui.label(RichText::new(fmt_ms(dur)).small().monospace());
-                });
-            }
-            if st.external {
-                widgets::note(ui, "Playing in YouTube Music in your browser.");
-            } else if let Some(e) = &st.error {
-                ui.label(RichText::new(e).small().color(Color32::from_rgb(248, 113, 113)));
-            }
-        });
-        // right: extras
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if app.cfg.active("quick_settings") {
-                ui.menu_button(icon::QUICK(), |ui| quick_settings(app, ui)).response.on_hover_text("Quick settings");
-            }
-            if app.cfg.active("mini_player") && widgets::small_button(ui, icon::MINI(), "Mini-player").clicked() {
-                app.do_action(crate::shortcuts::Action::ToggleMiniPlayer, &ui.ctx().clone());
-            }
-            if widgets::small_button(ui, icon::QUEUE(), "Queue").clicked() {
-                app.navigate(Page::Queue);
-            }
-            if app.cfg.active("lyrics") && widgets::small_button(ui, icon::LYRICS(), "Lyrics / Now Playing").clicked() {
-                app.navigate(Page::NowPlaying);
-            }
-            let mut v = st.volume;
-            ui.spacing_mut().slider_width = 90.0;
-            if ui.add(egui::Slider::new(&mut v, 0.0..=1.0).show_value(false)).changed() {
-                app.engine.send(Cmd::SetVolume(v));
-                app.cfg.playback.volume = v;
-                app.mark_dirty();
-            }
-            if widgets::small_button(ui, if st.muted { icon::MUTE() } else { icon::VOL() }, "Mute").clicked() {
-                app.engine.send(Cmd::ToggleMute);
-                app.cfg.playback.muted = !st.muted;
-                app.mark_dirty();
-            }
-            if app.cfg.active("vis_in_bar") && ui.available_width() > 120.0 {
-                let accent = app.accent();
-                if let Some((bars, _)) = app.vis_data().filter(|(b, _)| !b.is_empty()) {
-                    let bars = bars.to_vec();
-                    let (rect, _) = ui.allocate_exact_size(egui::vec2(90.0, 28.0), egui::Sense::hover());
-                    let n = bars.len().min(24).max(1);
-                    let w = rect.width() / n as f32;
-                    for i in 0..n {
-                        let v = bars[i * bars.len() / n];
-                        let h = (v * rect.height()).max(1.0);
-                        ui.painter().rect_filled(egui::Rect::from_min_max(egui::pos2(rect.left() + i as f32 * w, rect.bottom() - h), egui::pos2(rect.left() + (i as f32 + 0.8) * w, rect.bottom())), 1, accent);
-                    }
-                }
-            }
-        });
-    });
-}
-
-fn quick_settings(app: &mut AquaApp, ui: &mut Ui) {
-    ui.set_min_width(260.0);
-    ui.label(RichText::new("Quick settings").strong());
-    for id in ["lyrics", "visualizer", "bg_album_art", "bg_blur", "bg_animated", "eq", "discord", "overlay"] {
-        if let Some(f) = crate::features::get(id) {
-            let mut v = app.cfg.on(id);
-            if ui.checkbox(&mut v, f.name).changed() {
-                app.request_toggle(id, v);
-            }
-        }
-    }
-    ui.separator();
-    ui.horizontal(|ui| {
-        for p in [crate::features::Preset::Minimal, crate::features::Preset::Balanced, crate::features::Preset::Enhanced] {
-            if ui.selectable_label(app.cfg.preset == p, p.label()).clicked() {
-                app.cfg.apply_preset(p);
-                app.mark_dirty();
-            }
-        }
-    });
-    if ui.button("Disable all visual customizations").clicked() {
-        app.cfg.disable_all_visual();
-        app.mark_dirty();
-    }
-    if ui.button("All settings…").clicked() {
-        app.navigate(Page::Settings);
-        ui.close();
-    }
-}
-
 fn back_button(app: &mut AquaApp, ui: &mut Ui) {
     if !app.back.is_empty() && ui.button("‹ Back").clicked() {
         app.go_back();
@@ -441,7 +120,7 @@ pub fn track_list(app: &mut AquaApp, ui: &mut Ui, tracks: &[Track], id_salt: &st
 
 pub fn handle_row_action(app: &mut AquaApp, tracks: &[Track], a: RowAction) {
     match a {
-        RowAction::Play(i) => app.play(tracks.to_vec(), i),
+        RowAction::Play(i) => { let f = page_from(app); app.play_list(tracks.to_vec(), i, f) },
         RowAction::Next(t) => app.engine.send(Cmd::PlayNext(vec![t])),
         RowAction::Queue(t) => {
             app.engine.send(Cmd::Enqueue(vec![t.clone()]));
@@ -468,107 +147,22 @@ pub fn handle_row_action(app: &mut AquaApp, tracks: &[Track], a: RowAction) {
 // ----------------------------------------------------------------------------
 // Pages
 
-fn home(app: &mut AquaApp, ui: &mut Ui) {
-    let hour = time::OffsetDateTime::now_local().map(|t| t.hour()).unwrap_or(12);
-    let greet = match hour {
-        5..=11 => "Good morning",
-        12..=17 => "Good afternoon",
-        _ => "Good evening",
-    };
-    widgets::heading(ui, greet);
-    let any_account = app.spotify.is_signed_in() || app.youtube.is_signed_in();
-    let has_local = !app.cfg.services.local_folders.is_empty();
-    if !any_account && !has_local {
-        egui::Frame::group(ui.style()).show(ui, |ui| {
-            ui.label(RichText::new("Welcome to Aqua Glass").strong().size(17.0));
-            ui.label("Connect a music service to see your playlists and library. Nothing has to be recreated: your existing Spotify playlists, liked songs, saved albums and followed artists are imported automatically.");
-            ui.horizontal(|ui| {
-                if app.cfg.services.spotify_enabled && ui.button("Connect Spotify").clicked() {
-                    app.spotify_login();
-                }
-                if app.cfg.services.youtube_enabled && ui.button("Set up YouTube Music…").clicked() {
-                    app.settings.category = crate::features::Category::Services;
-                    app.navigate(Page::Settings);
-                }
-                if ui.button("Add a local music folder…").clicked() {
-                    app.settings.category = crate::features::Category::Services;
-                    app.navigate(Page::Settings);
-                }
-            });
-            widgets::note(ui, "Spotify playback requires Spotify Premium. Library import, sync and transfer work with any account.");
-        });
+fn card(app: &mut AquaApp, ui: &mut Ui, art: &str, title: &str, sub: &str, p: ProviderKind) -> egui::Response {
+    let (_, w) = widgets::grid_metrics(ui.available_width().max(400.0));
+    let tex = if app.cfg.active("artwork_in_lists") { app.artwork.lock().unwrap().get(art, Kind::Cover) } else { None };
+    let o = widgets::media_card(ui, tex.as_ref(), title, sub, Some(p), w.min(200.0), false, app.accent());
+    let (_, resp) = ui.allocate_exact_size(egui::vec2(0.0, 0.0), egui::Sense::hover());
+    if o.open || o.play {
+        // synthesize a click response for callers
+        let r = resp.clone();
+        return clicked(r);
     }
-    egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-        let recent = app.library.lock().unwrap().lib(ProviderKind::Spotify).recent.clone();
-        if !recent.is_empty() && app.filter.allows(ProviderKind::Spotify) {
-            widgets::section(ui, "Recently played");
-            let mut act = None;
-            ui.horizontal_wrapped(|ui| {
-                for (i, t) in recent.iter().take(12).enumerate() {
-                    if card(app, ui, &t.artwork_url, &t.title, &t.artist_line(), t.provider).clicked() {
-                        act = Some(i);
-                    }
-                }
-            });
-            if let Some(i) = act {
-                app.play(recent.clone(), i);
-            }
-        }
-        widgets::section(ui, "Your playlists");
-        let lists = all_playlists(app);
-        if lists.is_empty() {
-            widgets::note(ui, "No playlists yet — sign in or sync from Settings › Library & Synchronization.");
-        }
-        let mut open = None;
-        ui.horizontal_wrapped(|ui| {
-            for p in lists.iter().take(24) {
-                let sub = format!("{} · {} tracks", p.provider.label(), p.track_count);
-                if card(app, ui, &p.artwork_url, &p.name, &sub, p.provider).clicked() {
-                    open = Some(Page::Playlist(p.provider, p.id.clone()));
-                }
-            }
-        });
-        if let Some(p) = open {
-            app.navigate(p);
-        }
-        let albums: Vec<Album> = {
-            let mut s = app.library.lock().unwrap();
-            s.libs.values().flat_map(|l| l.albums.iter().cloned()).filter(|a| app.filter.allows(a.provider)).take(12).collect()
-        };
-        if !albums.is_empty() {
-            widgets::section(ui, "Saved albums");
-            let mut open = None;
-            ui.horizontal_wrapped(|ui| {
-                for a in &albums {
-                    if card(app, ui, &a.artwork_url, &a.name, &a.artists.join(", "), a.provider).clicked() {
-                        open = Some(Page::Album(a.clone()));
-                    }
-                }
-            });
-            if let Some(p) = open {
-                app.navigate(p);
-            }
-        }
-    });
+    resp
 }
 
-fn card(app: &mut AquaApp, ui: &mut Ui, art: &str, title: &str, sub: &str, p: ProviderKind) -> egui::Response {
-    let size = 140.0;
-    let tex = if app.cfg.active("artwork_in_lists") { app.artwork.lock().unwrap().get(art, Kind::Cover) } else { None };
-    ui.allocate_ui(egui::vec2(size, size + 44.0), |ui| {
-        ui.vertical(|ui| {
-            let r = widgets::artwork(ui, tex.as_ref(), size, 8);
-            ui.add(egui::Label::new(RichText::new(title).strong()).truncate());
-            ui.horizontal(|ui| {
-                widgets::provider_badge(ui, p);
-                ui.add(egui::Label::new(RichText::new(sub).small().weak()).truncate());
-            });
-            r
-        })
-        .inner
-    })
-    .inner
-    .on_hover_cursor(egui::CursorIcon::PointingHand)
+fn clicked(mut r: egui::Response) -> egui::Response {
+    r.flags.insert(egui::response::Flags::CLICKED);
+    r
 }
 
 pub fn all_playlists(app: &mut AquaApp) -> Vec<Playlist> {
@@ -580,121 +174,7 @@ pub fn all_playlists(app: &mut AquaApp) -> Vec<Playlist> {
         .collect()
 }
 
-fn search(app: &mut AquaApp, ui: &mut Ui) {
-    widgets::heading(ui, "Search");
-    ui.horizontal(|ui| {
-        let r = ui.add(egui::TextEdit::singleline(&mut app.search.query).hint_text("Songs, artists, albums, playlists…").desired_width(420.0));
-        if app.search.focus {
-            r.request_focus();
-            app.search.focus = false;
-        }
-        if (r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))) || ui.button("Search").clicked() {
-            app.run_search();
-        }
-        if app.search.pending > 0 {
-            ui.spinner();
-        }
-    });
-    widgets::note(ui, "Searches the services shown in the sidebar filter. YouTube searches use 100 of your 10,000 daily Data-API quota units.");
-    egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-        if !app.search.library_hits.is_empty() {
-            widgets::section(ui, "In your library");
-            let hits = app.search.library_hits.clone();
-            simple_tracks(app, ui, &hits, 8);
-        }
-        let mut order = vec![ProviderKind::Spotify, ProviderKind::YouTube, ProviderKind::Local];
-        order.sort_by_key(|p| if *p == app.cfg.playback.preferred_provider { 0 } else { 1 });
-        for p in order {
-            let Some(r) = app.search.results.get(&p).cloned() else { continue };
-            widgets::section(ui, p.label());
-            match r {
-                Err(e) => widgets::error(ui, &e),
-                Ok(res) => {
-                    if res.tracks.is_empty() && res.albums.is_empty() && res.artists.is_empty() && res.playlists.is_empty() {
-                        widgets::note(ui, "No results.");
-                    }
-                    simple_tracks(app, ui, &res.tracks, 15);
-                    if !res.albums.is_empty() {
-                        ui.label(RichText::new("Albums").strong());
-                        let mut open = None;
-                        ui.horizontal_wrapped(|ui| {
-                            for a in &res.albums {
-                                if card(app, ui, &a.artwork_url, &a.name, &a.artists.join(", "), a.provider).clicked() {
-                                    open = Some(Page::Album(a.clone()));
-                                }
-                            }
-                        });
-                        if let Some(p) = open {
-                            app.navigate(p);
-                        }
-                    }
-                    if !res.artists.is_empty() {
-                        ui.label(RichText::new("Artists").strong());
-                        let mut open = None;
-                        ui.horizontal_wrapped(|ui| {
-                            for a in &res.artists {
-                                if card(app, ui, &a.artwork_url, &a.name, "Artist", a.provider).clicked() {
-                                    open = Some(Page::Artist(a.clone()));
-                                }
-                            }
-                        });
-                        if let Some(p) = open {
-                            app.navigate(p);
-                        }
-                    }
-                    if !res.playlists.is_empty() {
-                        ui.label(RichText::new("Playlists").strong());
-                        let mut open = None;
-                        ui.horizontal_wrapped(|ui| {
-                            for pl in &res.playlists {
-                                if card(app, ui, &pl.artwork_url, &pl.name, &pl.owner, pl.provider).clicked() {
-                                    open = Some(Page::Playlist(pl.provider, pl.id.clone()));
-                                }
-                            }
-                        });
-                        if let Some(p) = open {
-                            app.navigate(p);
-                        }
-                    }
-                }
-            }
-        }
-    });
-}
-
-/// Non-virtualized short track list (search results).
-fn simple_tracks(app: &mut AquaApp, ui: &mut Ui, tracks: &[Track], max: usize) {
-    let mut act = None;
-    for (i, t) in tracks.iter().take(max).enumerate() {
-        ui.horizontal(|ui| {
-            if ui.button(icon::PLAY()).on_hover_text("Play").clicked() {
-                act = Some(RowAction::Play(i));
-            }
-            if ui.button("+").on_hover_text("Add to queue").clicked() {
-                act = Some(RowAction::Queue(t.clone()));
-            }
-            widgets::provider_badge(ui, t.provider);
-            ui.add(egui::Label::new(RichText::new(&t.title).strong()).truncate());
-            ui.add(egui::Label::new(RichText::new(format!("{} · {}", t.artist_line(), fmt_ms(t.duration_ms))).weak()).truncate());
-            if t.provider != ProviderKind::Local && widgets::small_button(ui, "🔃", "Find this track on the other service").clicked() {
-                act = Some(RowAction::Alternatives(t.clone()));
-            }
-        });
-    }
-    if let Some(a) = act {
-        // play a single search result (not the whole result list)
-        let a = match a {
-            RowAction::Play(i) => {
-                app.play(vec![tracks[i].clone()], 0);
-                return;
-            }
-            a => a,
-        };
-        handle_row_action(app, tracks, a);
-    }
-}
-
-fn library(app: &mut AquaApp, ui: &mut Ui) {
+pub fn library(app: &mut AquaApp, ui: &mut Ui) {
     widgets::heading(ui, "Library");
     for p in [ProviderKind::Spotify, ProviderKind::YouTube, ProviderKind::Local] {
         if !app.filter.allows(p) || !app.provider_enabled(p) {
@@ -795,7 +275,7 @@ fn library(app: &mut AquaApp, ui: &mut Ui) {
     }
 }
 
-fn playlists_page(app: &mut AquaApp, ui: &mut Ui) {
+pub fn playlists_page(app: &mut AquaApp, ui: &mut Ui) {
     widgets::heading(ui, "Playlists");
     ui.add(egui::TextEdit::singleline(&mut app.view.filter).hint_text("Filter…").desired_width(260.0));
     let f = app.view.filter.to_lowercase();
@@ -824,7 +304,7 @@ fn playlists_page(app: &mut AquaApp, ui: &mut Ui) {
     }
 }
 
-fn artists_page(app: &mut AquaApp, ui: &mut Ui) {
+pub fn artists_page(app: &mut AquaApp, ui: &mut Ui) {
     widgets::heading(ui, "Artists");
     let artists: Vec<Artist> = {
         let s = app.library.lock().unwrap();
@@ -848,7 +328,7 @@ fn artists_page(app: &mut AquaApp, ui: &mut Ui) {
     }
 }
 
-fn albums_page(app: &mut AquaApp, ui: &mut Ui) {
+pub fn albums_page(app: &mut AquaApp, ui: &mut Ui) {
     widgets::heading(ui, "Albums");
     let albums: Vec<Album> = {
         let s = app.library.lock().unwrap();
@@ -889,7 +369,7 @@ fn playlist_header(app: &mut AquaApp, ui: &mut Ui, art: &str, title: &str, sub: 
     });
 }
 
-fn playlist_view(app: &mut AquaApp, ui: &mut Ui, p: ProviderKind, id: &str) {
+pub fn playlist_view(app: &mut AquaApp, ui: &mut Ui, p: ProviderKind, id: &str) {
     back_button(app, ui);
     let entry = app.library.lock().unwrap().lib(p).playlist(id).cloned();
     let meta = entry.as_ref().map(|e| e.meta.clone()).unwrap_or_else(|| {
@@ -911,14 +391,14 @@ fn playlist_view(app: &mut AquaApp, ui: &mut Ui, p: ProviderKind, id: &str) {
         if ui.add_enabled(ok, egui::Button::new(format!("{}  Play", icon::PLAY()))).clicked() {
             if let Some(Ok(t)) = &tracks {
                 app.engine.send(Cmd::SetShuffle(false));
-                app.play(t.clone(), 0);
+                app.play_list(t.clone(), 0, super::PlayFrom::Other);
             }
         }
         if ui.add_enabled(ok, egui::Button::new(format!("{}  Shuffle", icon::SHUFFLE()))).clicked() {
             if let Some(Ok(t)) = &tracks {
                 app.engine.send(Cmd::SetShuffle(true));
                 let start = rand::random_range(0..t.len().max(1));
-                app.play(t.clone(), start);
+                app.play_list(t.clone(), start, super::PlayFrom::Other);
             }
         }
         if p != ProviderKind::Local && entry.is_some() && !imported && ui.button("Import").on_hover_text("Cache locally and keep in sync").clicked() {
@@ -1024,7 +504,7 @@ pub fn pick_folder() -> Option<std::path::PathBuf> {
     None
 }
 
-fn album_view(app: &mut AquaApp, ui: &mut Ui, a: &Album) {
+pub fn album_view(app: &mut AquaApp, ui: &mut Ui, a: &Album) {
     back_button(app, ui);
     playlist_header(app, ui, &a.artwork_url, &a.name, &format!("{} · {}", a.artists.join(", "), a.release_date), "", a.provider);
     let key = format!("album:{}", a.id);
@@ -1060,7 +540,7 @@ fn album_view(app: &mut AquaApp, ui: &mut Ui, a: &Album) {
         Some(Err(e)) => widgets::error(ui, &e),
         Some(Ok(t)) => {
             if ui.button(format!("{}  Play album", icon::PLAY())).clicked() {
-                app.play(t.clone(), 0);
+                app.play_list(t.clone(), 0, super::PlayFrom::Album);
             }
             if let Some(act) = track_list(app, ui, &t, &key) {
                 handle_row_action(app, &t, act);
@@ -1069,7 +549,7 @@ fn album_view(app: &mut AquaApp, ui: &mut Ui, a: &Album) {
     }
 }
 
-fn artist_view(app: &mut AquaApp, ui: &mut Ui, a: &Artist) {
+pub fn artist_view(app: &mut AquaApp, ui: &mut Ui, a: &Artist) {
     back_button(app, ui);
     playlist_header(app, ui, &a.artwork_url, &a.name, &a.genres.join(", "), "", a.provider);
     if a.provider != ProviderKind::Spotify {
@@ -1108,64 +588,6 @@ fn artist_view(app: &mut AquaApp, ui: &mut Ui, a: &Artist) {
             }
         }
     }
-}
-
-fn now_playing(app: &mut AquaApp, ui: &mut Ui) {
-    let st = app.state.clone();
-    let Some(t) = st.current.clone() else {
-        widgets::heading(ui, "Now Playing");
-        ui.label("Nothing is playing. Pick something from your library or search.");
-        return;
-    };
-    let lyrics_on = app.cfg.active("lyrics");
-    if app.lyrics.fullscreen && lyrics_on {
-        if ui.button("✖ Exit fullscreen lyrics").clicked() {
-            app.lyrics.fullscreen = false;
-        }
-        lyrics_panel(app, ui, true);
-        return;
-    }
-    ui.columns(if lyrics_on { 2 } else { 1 }, |cols| {
-        let ui = &mut cols[0];
-        ui.vertical_centered(|ui| {
-            let size = (ui.available_width() * 0.8).clamp(160.0, 380.0);
-            let tex = app.artwork.lock().unwrap().get(&t.artwork_url, Kind::Cover);
-            widgets::artwork(ui, tex.as_ref(), size, 14);
-            ui.add_space(8.0);
-            ui.label(RichText::new(&t.title).heading().strong());
-            ui.label(RichText::new(t.artist_line()).size(16.0));
-            ui.horizontal(|ui| {
-                ui.add_space((ui.available_width() / 2.0 - 80.0).max(0.0));
-                widgets::provider_badge(ui, t.provider);
-                ui.label(RichText::new(&t.album).weak());
-            });
-            if st.external {
-                widgets::note(ui, "This YouTube track plays in YouTube Music in your browser — Google provides no API for third-party audio playback.");
-                if ui.button(format!("Open again {}", icon::EXTERNAL())).clicked() {
-                    if let Some(u) = t.web_url(app.cfg.services.youtube_open_in) {
-                        let _ = open::that_detached(u);
-                    }
-                }
-            }
-            ui.horizontal(|ui| {
-                ui.add_space((ui.available_width() / 2.0 - 120.0).max(0.0));
-                if t.provider != ProviderKind::Local && ui.button(format!("{} Like", icon::HEART())).clicked() {
-                    app.like(&t);
-                }
-                if t.provider != ProviderKind::Local && ui.button("🔃 Other version…").clicked() {
-                    app.find_alternatives(&t);
-                }
-                if lyrics_on && app.cfg.active("lyrics_fullscreen") && ui.button("⛶ Fullscreen lyrics").clicked() {
-                    app.lyrics.fullscreen = true;
-                }
-            });
-            ui.add_space(10.0);
-            visualizer(app, ui);
-        });
-        if lyrics_on {
-            lyrics_panel(app, &mut cols[1], false);
-        }
-    });
 }
 
 pub fn visualizer(app: &mut AquaApp, ui: &mut Ui) {
@@ -1318,59 +740,10 @@ pub fn lyrics_panel(app: &mut AquaApp, ui: &mut Ui, fullscreen: bool) {
     });
 }
 
-fn queue(app: &mut AquaApp, ui: &mut Ui) {
-    widgets::heading(ui, "Queue");
-    let st = app.state.clone();
-    ui.horizontal(|ui| {
-        ui.label(format!("{} tracks", st.queue.len()));
-        if ui.button("Clear upcoming").clicked() {
-            app.engine.send(Cmd::ClearQueue);
-        }
-        let mut sh = st.shuffle;
-        if ui.checkbox(&mut sh, "Shuffle").changed() {
-            app.engine.send(Cmd::SetShuffle(sh));
-        }
-    });
-    widgets::note(ui, "Double-click a track to jump to it. Spotify, YouTube and local tracks can be mixed in one queue.");
-    ui.separator();
-    let mut cmd = None;
-    let n = st.queue.len();
-    egui::ScrollArea::vertical().auto_shrink([false, false]).show_rows(ui, 30.0, n, |ui, range| {
-        for i in range {
-            let t = &st.queue[i];
-            let cur = st.queue_pos == Some(i);
-            let r = ui.horizontal(|ui| {
-                ui.add_sized([36.0, 24.0], egui::Label::new(RichText::new(if cur { icon::NOW().to_string() } else { (i + 1).to_string() }).weak()));
-                widgets::provider_badge(ui, t.provider);
-                let mut title = RichText::new(format!("{} — {}", t.title, t.artist_line()));
-                if cur {
-                    title = title.color(app.accent()).strong();
-                }
-                ui.add(egui::Label::new(title).truncate());
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if widgets::small_button(ui, "✖", "Remove").clicked() {
-                        cmd = Some(Cmd::Remove(i));
-                    }
-                    if i + 1 < n && widgets::small_button(ui, "⏷", "Move down").clicked() {
-                        cmd = Some(Cmd::Move(i, i + 1));
-                    }
-                    if i > 0 && widgets::small_button(ui, "⏶", "Move up").clicked() {
-                        cmd = Some(Cmd::Move(i, i - 1));
-                    }
-                    ui.label(RichText::new(fmt_ms(t.duration_ms)).monospace().weak());
-                });
-            });
-            if r.response.interact(egui::Sense::click()).double_clicked() {
-                cmd = Some(Cmd::JumpTo(i));
-            }
-        }
-    });
-    if let Some(c) = cmd {
-        app.engine.send(c);
+fn page_from(app: &AquaApp) -> super::PlayFrom {
+    match app.page {
+        Page::Album(_) => super::PlayFrom::Album,
+        Page::Artist(_) => super::PlayFrom::Artist,
+        _ => super::PlayFrom::Other,
     }
-}
-
-#[allow(dead_code)]
-fn liked_id() -> &'static str {
-    LIKED_ID
 }

@@ -14,6 +14,7 @@ pub mod keys {
     pub const SPOTIFY_WEBAPI_REFRESH: &str = "spotify.webapi_refresh_token";
     pub const YOUTUBE_REFRESH: &str = "youtube.refresh_token";
     pub const YOUTUBE_CLIENT_SECRET: &str = "youtube.client_secret";
+    pub const LASTFM_API_KEY: &str = "lastfm.api_key";
 }
 
 #[allow(dead_code)]

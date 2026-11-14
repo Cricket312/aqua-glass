@@ -1,8 +1,10 @@
 //! The egui/eframe user interface.
 
 mod background;
+mod browse;
 mod jobs;
 mod pages;
+mod shell;
 mod settings;
 mod transfer_ui;
 mod viewports;
@@ -38,12 +40,23 @@ pub enum Page {
     Artists,
     Albums,
     NowPlaying,
+    Discover,
     Queue,
     Transfer,
     Settings,
     Playlist(ProviderKind, String),
     Album(Album),
     Artist(Artist),
+}
+
+/// Where playback was started from (decides whether Similarity Radio starts).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PlayFrom {
+    Search,
+    Artist,
+    Album,
+    Radio,
+    Other,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -168,6 +181,14 @@ pub struct AquaApp {
     pub vis_shared: viewports::Shared,
     /// Main window hidden to the tray.
     pub main_hidden: bool,
+    pub radio: Option<crate::radio::Radio>,
+    radio_prefs_last: Option<crate::radio::Prefs>,
+    pub history: Arc<Mutex<crate::history::History>>,
+    /// Track keys liked in this session or present in a cached Liked collection.
+    pub liked_keys: std::collections::HashSet<String>,
+    pub lastfm_key: String,
+    pub lastfm_input: String,
+    pub top_search: String,
 }
 
 pub enum Confirm {
@@ -219,6 +240,20 @@ impl AquaApp {
                         if let Some(t) = &st.current {
                             winint::notify(&t.title, &format!("{} · {}", t.artist_line(), t.provider.label()));
                         }
+                    }
+                }
+            }));
+        }
+
+        // local listening history (recorded from the engine thread, so it works while hidden)
+        let history = Arc::new(Mutex::new(crate::history::History::load()));
+        {
+            let h = history.clone();
+            engine.add_listener(Box::new(move |st: &PlayerState| {
+                if let Some(r) = &st.last_played {
+                    let mut g = h.lock().unwrap();
+                    if g.record(r, crate::util::now_unix()) {
+                        g.save();
                     }
                 }
             }));
@@ -284,6 +319,13 @@ impl AquaApp {
             accent_override: None,
             vis_shared: viewports::Shared::default(),
             main_hidden: false,
+            radio: None,
+            radio_prefs_last: None,
+            history,
+            liked_keys: Default::default(),
+            lastfm_key: crate::security::get(crate::security::keys::LASTFM_API_KEY).unwrap_or_default(),
+            lastfm_input: String::new(),
+            top_search: String::new(),
         };
         app.settings.category = features::Category::ALL
             .into_iter()
@@ -334,6 +376,78 @@ impl AquaApp {
                 _ => {}
             }
         }
+    }
+
+    pub fn radio_prefs(&self) -> crate::radio::Prefs {
+        let c = &self.cfg;
+        crate::radio::Prefs {
+            strength: c.radio.strength,
+            target: c.radio.target,
+            threshold: c.radio.threshold,
+            provider: c.radio.provider,
+            endless: c.active("radio_endless"),
+            prefer_unheard: c.active("radio_prefer_unheard"),
+            avoid_recent: c.active("radio_avoid_recent"),
+            avoid_duplicates: c.active("radio_avoid_duplicates"),
+            allow_repeat_artists: c.active("radio_repeat_artists"),
+            learn: c.active("radio_learn"),
+            stay_close: c.active("radio_stay_close"),
+            lastfm_key: self.lastfm_key.clone(),
+            same_artist_source: false,
+        }
+    }
+
+    pub fn radio_status(&self) -> Option<crate::radio::Status> {
+        self.radio.as_ref().map(|r| r.status.lock().unwrap().clone())
+    }
+
+    pub fn radio_send(&self, m: crate::radio::Msg) {
+        if let Some(r) = &self.radio {
+            r.send(m);
+        }
+    }
+
+    /// Play a single song from search results — starts Similarity Radio when enabled.
+    pub fn play_single(&mut self, t: Track, from: PlayFrom) {
+        if !self.provider_enabled(t.provider) {
+            self.toast(format!("{} is disabled in Settings › Music Services.", t.provider.label()), true);
+            return;
+        }
+        self.engine.send(Cmd::Play { tracks: vec![t.clone()], start: 0 });
+        let start_radio = self.radio.is_some()
+            && match from {
+                PlayFrom::Search => self.cfg.active("radio_from_search"),
+                PlayFrom::Artist => self.cfg.active("radio_from_artist"),
+                PlayFrom::Album => self.cfg.active("radio_from_album"),
+                PlayFrom::Radio => true,
+                PlayFrom::Other => false,
+            };
+        if start_radio {
+            self.radio_send(crate::radio::Msg::Start(t));
+        } else {
+            self.radio_send(crate::radio::Msg::Stop);
+        }
+    }
+
+    /// Play a list (playlist/album/...). Radio never overwrites list playback; with
+    /// "Activate from Album/Artist Pages" recommendations follow *after* the list.
+    pub fn play_list(&mut self, tracks: Vec<Track>, start: usize, from: PlayFrom) {
+        let seed = tracks.get(start).cloned();
+        self.play(tracks, start);
+        let follow = self.radio.is_some()
+            && match from {
+                PlayFrom::Album => self.cfg.active("radio_from_album"),
+                PlayFrom::Artist => self.cfg.active("radio_from_artist"),
+                _ => false,
+            };
+        match (follow, seed) {
+            (true, Some(s)) => self.radio_send(crate::radio::Msg::Start(s)),
+            _ => self.radio_send(crate::radio::Msg::Stop),
+        }
+    }
+
+    pub fn is_liked(&self, t: &Track) -> bool {
+        self.liked_keys.contains(&t.key())
     }
 
     pub fn toast(&mut self, text: impl Into<String>, error: bool) {
@@ -511,6 +625,8 @@ impl AquaApp {
     }
 
     pub fn like(&mut self, t: &Track) {
+        self.liked_keys.insert(t.key());
+        self.radio_send(crate::radio::Msg::Liked(t.clone()));
         let t = t.clone();
         match t.provider {
             ProviderKind::Spotify => {
@@ -849,6 +965,33 @@ impl AquaApp {
                 winint::set_backdrop(h, c.active("window_backdrop"), self.current_theme().dark);
             }
         }
+        // Similarity Radio: worker exists only while enabled
+        if c.active("similarity_radio") {
+            let prefs = self.radio_prefs();
+            if self.radio.is_none() {
+                let ctx2 = ctx.clone();
+                self.radio = Some(crate::radio::Radio::start(
+                    crate::radio::Deps {
+                        engine: self.engine.clone(),
+                        spotify: self.spotify.clone(),
+                        youtube: self.youtube.clone(),
+                        library: self.library.clone(),
+                        history: self.history.clone(),
+                        wake: Arc::new(move || ctx2.request_repaint()),
+                    },
+                    prefs.clone(),
+                ));
+            } else if self.radio_prefs_last.as_ref() != Some(&prefs) {
+                if let Some(r) = &self.radio {
+                    r.send(crate::radio::Msg::Prefs(prefs.clone()));
+                }
+            }
+            self.radio_prefs_last = Some(prefs);
+        } else if self.radio.is_some() {
+            self.radio = None; // worker exits; pending recommendations are removed
+            self.radio_prefs_last = None;
+            self.engine.send(Cmd::RadioClearUpcoming);
+        }
         // visualizer cleanup
         if !c.active("visualizer") {
             self.analyzer = None;
@@ -970,7 +1113,7 @@ impl AquaApp {
                     l.playlists.insert(
                         0,
                         crate::library::PlaylistEntry {
-                            meta: Playlist { provider: ProviderKind::Local, id: crate::library::LOCAL_ALL_ID.into(), name: "All Local Files".into(), track_count: n as u32, owned_by_user: true, ..Default::default() },
+                            meta: Playlist { provider: ProviderKind::Local, id: crate::library::LOCAL_ALL_ID.into(), name: "All Local Files".into(), track_count: n as u32, owned_by_user: true, artwork_url: tracks.iter().find(|t| !t.artwork_url.is_empty()).map(|t| t.artwork_url.clone()).unwrap_or_default(), ..Default::default() },
                             imported: true,
                             removed_upstream: false,
                             last_synced: crate::util::now_unix(),
@@ -984,6 +1127,8 @@ impl AquaApp {
                                 id: t.album_id.clone(),
                                 name: t.album.clone(),
                                 artists: t.artists.clone(),
+                                artwork_url: t.artwork_url.clone(),
+                                total_tracks: 0,
                                 ..Default::default()
                             });
                         }
@@ -1359,9 +1504,24 @@ impl eframe::App for AquaApp {
         let st = self.engine.state.read().unwrap();
         if st.version != self.last_state_version {
             self.last_state_version = st.version;
+            let track_changed = st.current.as_ref().map(|t| t.key()) != self.state.current.as_ref().map(|t| t.key());
             self.state = st.clone();
+            drop(st);
+            if track_changed {
+                if let Some(t) = self.state.current.clone() {
+                    // mark as liked when it's in a cached Liked collection
+                    let k = t.key();
+                    if !self.liked_keys.contains(&k) && matches!(t.provider, ProviderKind::Spotify | ProviderKind::YouTube) {
+                        let mut lib = self.library.lock().unwrap();
+                        if lib.tracks(t.provider, crate::library::LIKED_ID).is_some_and(|l| l.iter().any(|x| x.id == t.id)) {
+                            self.liked_keys.insert(k);
+                        }
+                    }
+                }
+            }
+        } else {
+            drop(st);
         }
-        drop(st);
         self.apply_config(ctx);
         self.perf_tick();
         self.lyrics_tick();
@@ -1437,7 +1597,7 @@ impl eframe::App for AquaApp {
         }
 
         background::paint(self, ui);
-        pages::shell(self, ui);
+        shell::shell(self, ui);
         viewports::show(self, &ctx);
         self.dialogs(&ctx);
         self.paint_toasts(&ctx);

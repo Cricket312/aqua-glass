@@ -27,10 +27,13 @@ pub struct Queue {
     pub pos: Option<usize>,
     pub shuffle: bool,
     pub repeat: RepeatMode,
+    /// Parallel to `tracks`: true for Similarity Radio recommendations.
+    pub radio: Vec<bool>,
 }
 
 impl Queue {
     pub fn set(&mut self, tracks: Vec<Track>, start: usize) {
+        self.radio = vec![false; tracks.len()];
         self.tracks = tracks;
         self.order = (0..self.tracks.len()).collect();
         self.pos = if self.tracks.is_empty() { None } else { Some(start.min(self.tracks.len() - 1)) };
@@ -117,6 +120,7 @@ impl Queue {
     pub fn append(&mut self, tracks: Vec<Track>) {
         for t in tracks {
             self.tracks.push(t);
+            self.radio.push(false);
             self.order.push(self.tracks.len() - 1);
         }
         if self.pos.is_none() && !self.order.is_empty() {
@@ -128,6 +132,7 @@ impl Queue {
         let at = self.pos.map(|p| p + 1).unwrap_or(0);
         for (k, t) in tracks.into_iter().enumerate() {
             self.tracks.push(t);
+            self.radio.push(false);
             self.order.insert(at + k, self.tracks.len() - 1);
         }
         if self.pos.is_none() && !self.order.is_empty() {
@@ -142,6 +147,9 @@ impl Queue {
         }
         let idx = self.order.remove(opos);
         self.tracks.remove(idx);
+        if idx < self.radio.len() {
+            self.radio.remove(idx);
+        }
         for o in self.order.iter_mut() {
             if *o > idx {
                 *o -= 1;
@@ -187,13 +195,70 @@ impl Queue {
         if let Some(p) = self.pos {
             let keep = self.order[p];
             let t = self.tracks[keep].clone();
+            let r = self.radio.get(keep).copied().unwrap_or(false);
             self.tracks = vec![t];
+            self.radio = vec![r];
             self.order = vec![0];
             self.pos = Some(0);
         } else {
             self.tracks.clear();
+            self.radio.clear();
             self.order.clear();
         }
+    }
+
+    fn is_radio_at(&self, opos: usize) -> bool {
+        self.order.get(opos).and_then(|i| self.radio.get(*i)).copied().unwrap_or(false)
+    }
+
+    /// "Add to queue": manual tracks go after the current track and other manual
+    /// items but always *before* generated radio recommendations.
+    pub fn insert_manual(&mut self, tracks: Vec<Track>) {
+        let start = self.pos.map(|p| p + 1).unwrap_or(0);
+        let mut at = (start..self.order.len()).find(|o| self.is_radio_at(*o)).unwrap_or(self.order.len());
+        for t in tracks {
+            self.tracks.push(t);
+            self.radio.push(false);
+            self.order.insert(at, self.tracks.len() - 1);
+            at += 1;
+        }
+        if self.pos.is_none() && !self.order.is_empty() {
+            self.pos = Some(0);
+        }
+    }
+
+    /// Append Similarity Radio recommendations at the very end.
+    pub fn append_radio(&mut self, tracks: Vec<Track>) {
+        for t in tracks {
+            self.tracks.push(t);
+            self.radio.push(true);
+            self.order.push(self.tracks.len() - 1);
+        }
+        if self.pos.is_none() && !self.order.is_empty() {
+            self.pos = Some(0);
+        }
+    }
+
+    /// Number of radio recommendations still to come.
+    pub fn radio_upcoming(&self) -> usize {
+        let start = self.pos.map(|p| p + 1).unwrap_or(0);
+        (start..self.order.len()).filter(|o| self.is_radio_at(*o)).count()
+    }
+
+    /// Remove radio recommendations that haven't played yet.
+    pub fn clear_radio_upcoming(&mut self) {
+        let start = self.pos.map(|p| p + 1).unwrap_or(0);
+        let mut o = self.order.len();
+        while o > start {
+            o -= 1;
+            if self.is_radio_at(o) {
+                self.remove(o);
+            }
+        }
+    }
+
+    pub fn radio_flags_in_order(&self) -> Vec<bool> {
+        (0..self.order.len()).map(|o| self.is_radio_at(o)).collect()
     }
 
     pub fn in_order(&self) -> Vec<Track> {
@@ -222,7 +287,12 @@ impl Default for EngineOpts {
 pub enum Cmd {
     Play { tracks: Vec<Track>, start: usize },
     Restore { tracks: Vec<Track>, start: usize, position_ms: u64 },
+    /// Manual "Add to queue" (takes priority over radio recommendations).
     Enqueue(Vec<Track>),
+    /// Similarity Radio recommendations (appended after everything else).
+    RadioAppend(Vec<Track>),
+    /// Drop radio recommendations that haven't played yet.
+    RadioClearUpcoming,
     PlayNext(Vec<Track>),
     Toggle,
     Resume,
@@ -283,8 +353,26 @@ pub struct PlayerState {
     pub message: Option<String>,
     pub error: Option<String>,
     pub spotify: SpotifyStatus,
+    /// Parallel to `queue`: which entries are radio recommendations.
+    pub queue_radio: Vec<bool>,
+    /// Radio recommendations still to play.
+    pub radio_upcoming: usize,
+    /// The most recently finished/left track (for history, skips and radio learning).
+    pub last_played: Option<PlayRecord>,
     /// Incremented on every change (for cheap change detection).
     pub version: u64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct PlayRecord {
+    pub track: Track,
+    pub listened_ms: u64,
+    /// Played to the end (or at least half of it).
+    pub completed: bool,
+    /// Left early by the user (Next / jump) before half of the track.
+    pub skipped: bool,
+    /// Sequence number so listeners can tell records apart.
+    pub seq: u64,
 }
 
 pub type Listener = Box<dyn FnMut(&PlayerState) + Send>;
@@ -335,6 +423,9 @@ impl Engine {
             local_token: 0,
             version: 0,
             last_spotify_token: None,
+            last_current: None,
+            leave_hint: None,
+            record_seq: 0,
         };
         std::thread::Builder::new()
             .name("playback-engine".into())
@@ -405,6 +496,10 @@ struct Worker {
     local_token: u64,
     version: u64,
     last_spotify_token: Option<TokenSource>,
+    last_current: Option<Track>,
+    /// (listened ms, natural end) for the track being left.
+    leave_hint: Option<(u64, bool)>,
+    record_seq: u64,
 }
 
 impl Worker {
@@ -431,6 +526,19 @@ impl Worker {
             s.current = self.q.current().cloned();
             s.queue = self.q.in_order();
             s.queue_pos = self.q.pos;
+            s.queue_radio = self.q.radio_flags_in_order();
+            s.radio_upcoming = self.q.radio_upcoming();
+            let key = s.current.as_ref().map(|t| t.key());
+            if key != self.last_current.as_ref().map(|t| t.key()) {
+                if let Some(prev) = self.last_current.take() {
+                    let (listened, natural) = self.leave_hint.take().unwrap_or((0, false));
+                    let dur = prev.duration_ms.max(1);
+                    let completed = natural || listened * 2 >= dur;
+                    self.record_seq += 1;
+                    s.last_played = Some(PlayRecord { skipped: !natural && !completed, completed, listened_ms: listened, track: prev, seq: self.record_seq });
+                }
+                self.last_current = s.current.clone();
+            }
             s.shuffle = self.q.shuffle;
             s.repeat = self.q.repeat;
             s.playing = self.playing;
@@ -482,6 +590,9 @@ impl Worker {
             self.publish(|_| {});
             return;
         };
+        if self.leave_hint.is_none() {
+            self.leave_hint = Some((self.position(), false));
+        }
         if self.playing && self.out.fade_ms() > 0 {
             self.out.set_paused(true);
             self.out.wait_faded();
@@ -670,6 +781,7 @@ impl Worker {
             match p.order_pos {
                 None => {
                     self.pending.clear();
+                    self.leave_hint = Some((u64::MAX / 4, true));
                     self.playing = false;
                     self.active = Active::None;
                     self.feeding = None;
@@ -678,11 +790,13 @@ impl Worker {
                     return;
                 }
                 Some(np) if p.needs_start => {
+                    self.leave_hint = Some((u64::MAX / 4, true));
                     self.q.pos = Some(np);
                     self.start_current(0, true);
                     return;
                 }
                 Some(np) => {
+                    self.leave_hint = Some((u64::MAX / 4, true));
                     self.q.pos = Some(np);
                     self.clock.track_start_frame.store(p.boundary_frame, Ordering::Relaxed);
                     self.clock.base_ms.store(0, Ordering::Relaxed);
@@ -751,9 +865,37 @@ impl Worker {
                 self.reset_clock(position_ms);
                 self.publish(|_| {});
             }
+            Cmd::RadioAppend(t) => {
+                let was_empty = self.q.current().is_none();
+                let at_end = !self.playing && self.pending.iter().any(|p| p.order_pos.is_none());
+                self.q.append_radio(t);
+                if was_empty {
+                    self.start_current(0, true);
+                } else if at_end || (self.feeding.is_none() && self.pending.is_empty() && !self.playing && self.state.read().unwrap().message.as_deref() == Some("End of queue")) {
+                    // the queue had run out: continue with the recommendations
+                    self.pending.clear();
+                    if self.q.advance(false).is_some() {
+                        self.start_current(0, true);
+                    }
+                } else {
+                    // re-plan the gapless hand-off if the current track was the last one
+                    if let Some(i) = self.pending.iter().position(|p| p.order_pos.is_none()) {
+                        let b = self.pending[i].boundary_frame;
+                        self.pending.remove(i);
+                        if let Some(np) = self.feeding.or(self.q.pos).and_then(|f| self.q.next_pos_from(f, true)) {
+                            self.pending.push_back(Pending { boundary_frame: b, order_pos: Some(np), needs_start: true });
+                        }
+                    }
+                    self.publish(|_| {});
+                }
+            }
+            Cmd::RadioClearUpcoming => {
+                self.q.clear_radio_upcoming();
+                self.publish(|_| {});
+            }
             Cmd::Enqueue(t) => {
                 let was_empty = self.q.current().is_none();
-                self.q.append(t);
+                self.q.insert_manual(t);
                 if was_empty {
                     self.start_current(0, true);
                 } else {
@@ -1022,6 +1164,33 @@ mod tests {
         assert_eq!(q.current().unwrap().title, "c");
         q.clear_upcoming();
         assert_eq!(titles(&q), ["c"]);
+    }
+
+    #[test]
+    fn manual_queue_has_priority_over_radio() {
+        let mut q = Queue::default();
+        q.set(vec![t("seed")], 0);
+        q.append_radio(vec![t("r1"), t("r2"), t("r3")]);
+        assert_eq!(q.radio_upcoming(), 3);
+        q.insert_manual(vec![t("m1")]);
+        q.insert_manual(vec![t("m2")]);
+        assert_eq!(titles(&q), ["seed", "m1", "m2", "r1", "r2", "r3"]);
+        // play next still goes right after the current track
+        q.insert_next(vec![t("n")]);
+        assert_eq!(titles(&q), ["seed", "n", "m1", "m2", "r1", "r2", "r3"]);
+        q.advance(false);
+        q.advance(false);
+        q.advance(false);
+        q.advance(false); // now at r1
+        assert_eq!(q.current().unwrap().title, "r1");
+        assert_eq!(q.radio_upcoming(), 2);
+        q.clear_radio_upcoming();
+        assert_eq!(titles(&q), ["seed", "n", "m1", "m2", "r1"], "only unplayed radio items are removed");
+        assert_eq!(q.current().unwrap().title, "r1");
+        q.append_radio(vec![t("r4")]);
+        q.insert_manual(vec![t("m3")]);
+        assert_eq!(titles(&q), ["seed", "n", "m1", "m2", "r1", "m3", "r4"]);
+        assert_eq!(q.radio_flags_in_order(), [false, false, false, false, true, false, true]);
     }
 
     #[test]

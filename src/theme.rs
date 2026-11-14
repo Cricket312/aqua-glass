@@ -29,7 +29,11 @@ pub struct Theme {
     pub dark: bool,
     pub accent: [u8; 3],
     pub accent2: [u8; 3],
+    /// Hover/highlight accent.
+    pub accent_hover: [u8; 3],
     pub background: [u8; 3],
+    /// Sidebar background.
+    pub sidebar: [u8; 3],
     pub panel: [u8; 3],
     pub surface: [u8; 3],
     pub text: [u8; 3],
@@ -60,21 +64,23 @@ fn aqua_default() -> Theme {
     Theme {
         name: "Aqua Glass Default".into(),
         dark: true,
-        accent: [34, 211, 238],
-        accent2: [59, 130, 246],
-        background: [10, 17, 28],
-        panel: [16, 27, 42],
-        surface: [24, 39, 58],
-        text: [226, 240, 250],
-        text_dim: [140, 163, 184],
-        border: [40, 70, 95],
-        panel_alpha: 0.72,
-        rounding: 10.0,
+        accent: [0x62, 0xD6, 0xB2],      // seafoam
+        accent2: [0x36, 0xB8, 0xAC],     // aqua
+        accent_hover: [0x85, 0xE5, 0xC8],
+        background: [0x0B, 0x15, 0x17],
+        sidebar: [0x10, 0x1D, 0x1F],
+        panel: [0x17, 0x27, 0x29],       // cards and panels
+        surface: [0x20, 0x34, 0x36],     // elevated surfaces
+        text: [0xF0, 0xF7, 0xF5],
+        text_dim: [0x9B, 0xAE, 0xAA],
+        border: [0x29, 0x40, 0x3F],
+        panel_alpha: 0.92,
+        rounding: 8.0,
         spacing: 8.0,
         font_size: 14.0,
         heading_size: 22.0,
         border_width: 1.0,
-        shadow_intensity: 0.5,
+        shadow_intensity: 0.35,
         hover_strength: 0.6,
         animation_speed: 1.0,
         blur_intensity: 1.0,
@@ -85,7 +91,7 @@ fn aqua_default() -> Theme {
 
 pub fn builtin_themes() -> Vec<Theme> {
     let base = aqua_default();
-    vec![
+    let mut v = vec![
         base.clone(),
         Theme {
             name: "Midnight Aqua".into(),
@@ -169,7 +175,15 @@ pub fn builtin_themes() -> Vec<Theme> {
             ..base.clone()
         },
         Theme { name: "Custom".into(), ..base },
-    ]
+    ];
+    // derived colours for palettes that don't define them
+    for t in v.iter_mut().skip(1) {
+        if t.name != "Custom" {
+            t.sidebar = lerp_rgb(t.background, t.panel, 0.6);
+            t.accent_hover = lerp_rgb(t.accent, [255, 255, 255], 0.3);
+        }
+    }
+    v
 }
 
 pub fn c(rgb: [u8; 3]) -> Color32 {
@@ -210,8 +224,9 @@ pub fn apply(ctx: &egui::Context, theme: &Theme, o: &ApplyOpts) {
     v.faint_bg_color = c(t.surface);
     v.override_text_color = Some(c(t.text));
     v.hyperlink_color = c(accent);
-    v.selection.bg_fill = ca(accent, 0.35);
-    v.selection.stroke = Stroke::new(1.0, c(accent));
+    // seafoam for selected controls, progress and toggles; dark text on it for contrast
+    v.selection.bg_fill = c(accent);
+    v.selection.stroke = Stroke::new(1.0, c(t.background));
     v.window_corner_radius = r;
     v.menu_corner_radius = r;
     v.window_stroke = Stroke::new(t.border_width, c(t.border));
@@ -234,19 +249,19 @@ pub fn apply(ctx: &egui::Context, theme: &Theme, o: &ApplyOpts) {
     w.inactive.fg_stroke = Stroke::new(1.0, c(t.text));
     w.inactive.corner_radius = r;
     let hover_fill = if o.hover {
-        c(lerp_rgb(t.surface, accent, 0.25 * t.hover_strength.clamp(0.0, 1.0)))
+        c(lerp_rgb(lerp_rgb(t.surface, t.border, 0.5), t.accent_hover, 0.12 * t.hover_strength.clamp(0.0, 1.0)))
     } else {
         inactive_fill
     };
     w.hovered.bg_fill = hover_fill;
     w.hovered.weak_bg_fill = hover_fill;
-    w.hovered.bg_stroke = Stroke::new(if o.hover { 1.0 } else { stroke_w }, c(if o.hover { accent } else { t.border }));
+    w.hovered.bg_stroke = Stroke::new(stroke_w, c(t.border));
     w.hovered.fg_stroke = Stroke::new(1.5, c(t.text));
     w.hovered.corner_radius = r;
     w.hovered.expansion = 0.0;
-    w.active.bg_fill = c(lerp_rgb(t.surface, accent, 0.45));
+    w.active.bg_fill = c(lerp_rgb(t.surface, accent, 0.3));
     w.active.weak_bg_fill = w.active.bg_fill;
-    w.active.bg_stroke = Stroke::new(1.0, c(accent));
+    w.active.bg_stroke = Stroke::new(stroke_w, c(t.border));
     w.active.fg_stroke = Stroke::new(2.0, c(t.text));
     w.active.corner_radius = r;
     w.open = w.active;

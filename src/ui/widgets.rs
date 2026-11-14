@@ -144,9 +144,9 @@ pub fn heading(ui: &mut Ui, text: &str) {
 }
 
 pub fn section(ui: &mut Ui, text: &str) {
-    ui.add_space(10.0);
+    ui.add_space(14.0);
     ui.label(RichText::new(text).strong().size(16.0));
-    ui.separator();
+    ui.add_space(4.0);
 }
 
 pub fn note(ui: &mut Ui, text: &str) {
@@ -206,4 +206,141 @@ pub fn sparkline(ui: &mut Ui, values: &[f32], target: f32, color: Color32) {
 
 pub fn small_button(ui: &mut Ui, text: &str, tip: &str) -> egui::Response {
     ui.add(egui::Button::new(text).frame(false)).on_hover_text(tip)
+}
+
+/// iOS-style toggle switch (seafoam when on).
+pub fn switch(ui: &mut Ui, on: &mut bool) -> egui::Response {
+    let size = egui::vec2(34.0, 18.0);
+    let (rect, mut resp) = ui.allocate_exact_size(size, egui::Sense::click());
+    if resp.clicked() {
+        *on = !*on;
+        resp.mark_changed();
+    }
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::CheckBox, ui.is_enabled(), *on, ""));
+    if ui.is_rect_visible(rect) {
+        let t = ui.ctx().animate_bool_responsive(resp.id, *on);
+        let v = ui.visuals();
+        let off_bg = v.widgets.inactive.bg_fill;
+        let on_bg = v.selection.bg_fill;
+        let bg = lerp_color(off_bg, on_bg, t);
+        let r = rect.height() / 2.0;
+        ui.painter().rect(rect, r, bg, egui::Stroke::new(1.0, v.widgets.noninteractive.bg_stroke.color), egui::StrokeKind::Inside);
+        let cx = egui::lerp((rect.left() + r)..=(rect.right() - r), t);
+        let knob = if *on { v.extreme_bg_color } else { v.widgets.inactive.fg_stroke.color };
+        ui.painter().circle_filled(egui::pos2(cx, rect.center().y), r - 3.0, knob);
+    }
+    resp
+}
+
+pub fn lerp_color(a: Color32, b: Color32, t: f32) -> Color32 {
+    let l = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t.clamp(0.0, 1.0)) as u8;
+    Color32::from_rgba_unmultiplied(l(a.r(), b.r()), l(a.g(), b.g()), l(a.b(), b.b()), l(a.a(), b.a()))
+}
+
+/// Rounded content card used by settings and dashboards.
+pub fn card<R>(ui: &mut Ui, title: Option<&str>, add: impl FnOnce(&mut Ui) -> R) -> R {
+    let fill = ui.visuals().faint_bg_color;
+    let stroke = ui.visuals().widgets.noninteractive.bg_stroke;
+    let r = egui::Frame::new()
+        .fill(fill)
+        .stroke(egui::Stroke::new(stroke.width.min(1.0), stroke.color))
+        .corner_radius(8)
+        .inner_margin(egui::Margin::symmetric(14, 12))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            if let Some(t) = title {
+                ui.label(RichText::new(t).strong().size(15.0));
+                ui.add_space(4.0);
+            }
+            add(ui)
+        })
+        .inner;
+    ui.add_space(10.0);
+    r
+}
+
+/// Section header with an optional "Show all" link. Returns true if the link was clicked.
+pub fn section_header(ui: &mut Ui, title: &str, show_all: bool) -> bool {
+    let mut clicked = false;
+    ui.add_space(14.0);
+    ui.horizontal(|ui| {
+        ui.label(RichText::new(title).strong().size(19.0));
+        if show_all {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                clicked = ui.add(egui::Label::new(RichText::new("Show all").small().strong().color(ui.visuals().weak_text_color())).sense(egui::Sense::click())).on_hover_cursor(egui::CursorIcon::PointingHand).clicked();
+            });
+        }
+    });
+    ui.add_space(6.0);
+    clicked
+}
+
+/// Number of cards per row and card width for the available width (≈4–6 per row).
+pub fn grid_metrics(avail: f32) -> (usize, f32) {
+    let gap = 14.0;
+    let avail = avail - 18.0; // leave room for the scrollbar
+    let n = ((avail + gap) / (170.0 + gap)).floor().clamp(2.0, 8.0) as usize;
+    let w = ((avail - gap * (n as f32 - 1.0)) / n as f32).floor();
+    (n, w)
+}
+
+pub struct CardOut {
+    pub open: bool,
+    pub play: bool,
+}
+
+/// Album/playlist card: artwork, name, subtitle, hover highlight and a play button.
+pub fn media_card(ui: &mut Ui, tex: Option<&egui::TextureHandle>, title: &str, subtitle: &str, provider: Option<ProviderKind>, w: f32, round_art: bool, accent: Color32) -> CardOut {
+    let pad = 10.0;
+    let art = w - pad * 2.0;
+    let h = art + pad * 2.0 + 42.0;
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, h), egui::Sense::click());
+    let hovered = resp.hovered() || resp.has_focus();
+    let v = ui.visuals().clone();
+    let fill = if hovered { v.widgets.inactive.bg_fill } else { v.faint_bg_color };
+    let p = ui.painter_at(rect);
+    p.rect_filled(rect, 8, fill);
+    let art_rect = egui::Rect::from_min_size(rect.min + egui::vec2(pad, pad), egui::vec2(art, art));
+    let ar = if round_art { (art / 2.0) as u8 } else { 6 };
+    match tex {
+        Some(t) => {
+            let ts = t.size_vec2();
+            let s = (art / ts.x).max(art / ts.y);
+            let uv_w = (art / (ts.x * s)).min(1.0);
+            let uv_h = (art / (ts.y * s)).min(1.0);
+            let uv = egui::Rect::from_center_size(egui::pos2(0.5, 0.5), egui::vec2(uv_w, uv_h));
+            egui::Image::new(egui::load::SizedTexture::new(t.id(), art_rect.size())).uv(uv).corner_radius(ar).paint_at(ui, art_rect);
+        }
+        None => {
+            p.rect_filled(art_rect, ar, v.widgets.inactive.bg_fill);
+            p.text(art_rect.center(), egui::Align2::CENTER_CENTER, icon::NOW(), egui::FontId::proportional(art * 0.3), v.weak_text_color());
+        }
+    }
+    let ty = art_rect.bottom() + 8.0;
+    let title_g = ui.painter().layout(title.to_string(), egui::FontId::proportional(14.0), v.strong_text_color(), f32::INFINITY);
+    let sub_g = ui.painter().layout(subtitle.to_string(), egui::FontId::proportional(12.0), v.weak_text_color(), f32::INFINITY);
+    let clip = egui::Rect::from_min_max(egui::pos2(rect.left() + pad, ty), egui::pos2(rect.right() - pad, rect.bottom()));
+    let pc = ui.painter_at(clip);
+    pc.galley(egui::pos2(rect.left() + pad, ty), title_g, Color32::WHITE);
+    let mut sx = rect.left() + pad;
+    if let Some(pk) = provider {
+        let c = provider_color(pk);
+        let r = egui::Rect::from_min_size(egui::pos2(sx, ty + 22.0), egui::vec2(18.0, 13.0));
+        pc.rect_filled(r, 3, c.gamma_multiply(0.18));
+        pc.text(r.center(), egui::Align2::CENTER_CENTER, pk.short(), egui::FontId::proportional(8.5), c);
+        sx += 22.0;
+    }
+    pc.galley(egui::pos2(sx, ty + 21.0), sub_g, Color32::WHITE);
+    // play button on hover / focus
+    let mut play = false;
+    if hovered {
+        let c = art_rect.right_bottom() - egui::vec2(22.0, 22.0);
+        let br = egui::Rect::from_center_size(c, egui::vec2(34.0, 34.0));
+        let pr = ui.interact(br, resp.id.with("play"), egui::Sense::click());
+        p.circle_filled(c, 17.0, if pr.hovered() { lerp_color(accent, Color32::WHITE, 0.15) } else { accent });
+        p.text(c + egui::vec2(1.0, 0.0), egui::Align2::CENTER_CENTER, icon::PLAY(), egui::FontId::proportional(14.0), v.extreme_bg_color);
+        play = pr.clicked();
+    }
+    let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
+    CardOut { open: resp.clicked() && !play, play: play || (resp.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))) }
 }

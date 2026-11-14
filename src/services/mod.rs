@@ -7,6 +7,7 @@
 //!   because Google does not offer a third-party audio playback API.
 //! * `lyrics` — LRCLIB.
 
+pub mod lastfm;
 pub mod lyrics;
 pub mod oauth;
 pub mod spotify;

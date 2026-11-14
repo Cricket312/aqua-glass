@@ -51,6 +51,8 @@ pub struct General {
     pub window_size: Option<[f32; 2]>,
     pub ui_scale: f32,
     pub sidebar_width: f32,
+    pub sidebar_collapsed: bool,
+    pub right_panel: RightPanel,
 }
 impl Default for General {
     fn default() -> Self {
@@ -59,7 +61,9 @@ impl Default for General {
             window_pos: None,
             window_size: None,
             ui_scale: 1.0,
-            sidebar_width: 210.0,
+            sidebar_width: 220.0,
+            sidebar_collapsed: false,
+            right_panel: RightPanel::Closed,
         }
     }
 }
@@ -378,6 +382,29 @@ impl Default for PerfCfg {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum RightPanel {
+    #[default]
+    Closed,
+    Queue,
+    Lyrics,
+    Info,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct RadioCfg {
+    pub strength: crate::radio::Strength,
+    pub target: usize,
+    pub threshold: usize,
+    pub provider: crate::radio::RadioProvider,
+}
+impl Default for RadioCfg {
+    fn default() -> Self {
+        RadioCfg { strength: crate::radio::Strength::Balanced, target: 15, threshold: 5, provider: crate::radio::RadioProvider::Automatic }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct Config {
@@ -399,6 +426,7 @@ pub struct Config {
     pub services: ServicesCfg,
     pub sync: SyncCfg,
     pub perf: PerfCfg,
+    pub radio: RadioCfg,
     pub shortcuts: BTreeMap<String, String>,
 }
 
@@ -422,6 +450,7 @@ impl Default for Config {
             services: ServicesCfg::default(),
             sync: SyncCfg::default(),
             perf: PerfCfg::default(),
+            radio: RadioCfg::default(),
             shortcuts: crate::shortcuts::default_bindings(),
         };
         c.fill_missing_features();
@@ -522,6 +551,8 @@ impl Config {
         self.mini.opacity = self.mini.opacity.clamp(0.2, 1.0);
         self.overlay.opacity = self.overlay.opacity.clamp(0.1, 1.0);
         self.sync.interval_min = self.sync.interval_min.clamp(5, 24 * 60);
+        self.radio.target = self.radio.target.clamp(5, 50);
+        self.radio.threshold = self.radio.threshold.clamp(1, self.radio.target.saturating_sub(1).max(1));
     }
 
     /// Raw toggle value.
@@ -612,7 +643,6 @@ impl Config {
             C::General => self.general = d.general,
             C::Appearance | C::Themes => self.appearance = d.appearance,
             C::Backgrounds => self.background = d.background,
-            C::Playback => self.playback = Playback { volume: self.playback.volume, ..d.playback },
             C::Audio => self.audio = d.audio,
             C::Lyrics => self.lyrics = d.lyrics,
             C::Visualizer => self.visualizer = d.visualizer,
@@ -622,6 +652,10 @@ impl Config {
             }
             C::Shortcuts => self.shortcuts = d.shortcuts,
             C::Library => self.sync = d.sync,
+            C::Playback => {
+                self.playback = Playback { volume: self.playback.volume, ..d.playback };
+                self.radio = d.radio;
+            }
             C::Performance => self.perf = d.perf,
             // Account / service configuration is never reset implicitly.
             _ => {}

@@ -32,38 +32,51 @@ pub fn page(app: &mut AquaApp, ui: &mut Ui) {
     if app.settings.discord_app_id.is_empty() && !app.cfg.services.discord_app_id.is_empty() {
         app.settings.discord_app_id = app.cfg.services.discord_app_id.clone();
     }
+    ui.add_space(4.0);
     ui.horizontal(|ui| {
-        widgets::heading(ui, &format!("{} Settings", icon::SETTINGS()));
-        ui.add_space(20.0);
-        let r = ui.add(egui::TextEdit::singleline(&mut app.settings.search).hint_text("🔍 Search settings (e.g. RAM, lyrics, Discord, background)").desired_width(360.0));
+        ui.label(RichText::new("Settings").size(24.0).strong());
+        ui.add_space(16.0);
+        let fill = ui.visuals().faint_bg_color;
+        egui::Frame::new().fill(fill).corner_radius(16).inner_margin(egui::Margin::symmetric(12, 4)).show(ui, |ui| {
+            ui.label(RichText::new(icon::SEARCH()).color(ui.visuals().weak_text_color()));
+            ui.add(egui::TextEdit::singleline(&mut app.settings.search).frame(egui::Frame::NONE).hint_text("Search settings — e.g. RAM, lyrics, Discord, background, radio").desired_width(340.0));
+        });
         if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
             app.settings.search.clear();
         }
-        let _ = r;
-    });
-    ui.horizontal(|ui| {
-        ui.label(RichText::new(format!("Preset: {}", app.cfg.preset.label())).weak());
-        if app.cfg.saved_visual_profile.is_some() {
-            if ui.button("Restore previous customization profile").clicked() {
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui.button("Disable all visual customizations").on_hover_text("Turns off every optional visual feature. Playback, accounts, libraries, playlists and playback preferences are kept.").clicked() {
+                app.cfg.disable_all_visual();
+                app.mark_dirty();
+                app.toast("All visual customizations disabled. Use “Restore previous profile” to undo.", false);
+            }
+            if app.cfg.saved_visual_profile.is_some() && ui.button("Restore previous profile").clicked() {
                 app.cfg.restore_visual();
                 app.mark_dirty();
             }
-        }
-        if ui.button("Disable All Visual Customizations").on_hover_text("Turns off every optional visual feature. Playback, accounts, libraries, playlists and playback preferences are kept.").clicked() {
-            app.cfg.disable_all_visual();
-            app.mark_dirty();
-            app.toast("All visual customizations disabled. Use “Restore previous customization profile” to undo.", false);
-        }
+            ui.label(RichText::new(format!("Preset: {}", app.cfg.preset.label())).size(12.0).color(ui.visuals().weak_text_color()));
+        });
     });
-    ui.separator();
+    ui.add_space(8.0);
     if !app.settings.search.trim().is_empty() {
         search_results(app, ui);
         return;
     }
-    egui::Panel::left("settings_cats").resizable(false).exact_size(200.0).frame(egui::Frame::new()).show(ui, |ui| {
+    egui::Panel::left("settings_cats").resizable(false).exact_size(190.0).frame(egui::Frame::new()).show(ui, |ui| {
         egui::ScrollArea::vertical().show(ui, |ui| {
             for c in Category::ALL {
-                if ui.add_sized([190.0, 26.0], egui::Button::selectable(app.settings.category == c, c.label())).clicked() {
+                let active = app.settings.category == c;
+                let (rect, resp) = ui.allocate_exact_size(egui::vec2(180.0, 28.0), egui::Sense::click());
+                let v = ui.visuals().clone();
+                if active {
+                    ui.painter().rect_filled(rect, 6, v.widgets.inactive.bg_fill);
+                    ui.painter().rect_filled(egui::Rect::from_min_size(rect.left_top() + egui::vec2(0.0, 6.0), egui::vec2(3.0, 16.0)), 2, app.accent());
+                } else if resp.hovered() {
+                    ui.painter().rect_filled(rect, 6, v.widgets.inactive.bg_fill.gamma_multiply(0.6));
+                }
+                let col = if active { v.strong_text_color() } else { v.weak_text_color() };
+                ui.painter().text(rect.left_center() + egui::vec2(12.0, 0.0), egui::Align2::LEFT_CENTER, c.label(), egui::FontId::proportional(13.5), col);
+                if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                     app.settings.category = c;
                     app.cfg.general.last_settings_category = c.label().to_string();
                     app.mark_dirty();
@@ -74,12 +87,14 @@ pub fn page(app: &mut AquaApp, ui: &mut Ui) {
     egui::CentralPanel::default().frame(egui::Frame::new().inner_margin(egui::Margin { left: 16, ..Default::default() })).show(ui, |ui| {
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             let c = app.settings.category;
-            ui.label(RichText::new(c.label()).heading().strong());
             ui.horizontal(|ui| {
-                if ui.small_button("Reset this category").clicked() {
-                    app.cfg.reset_category(c);
-                    app.mark_dirty();
-                }
+                ui.label(RichText::new(c.label()).size(19.0).strong());
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.small_button("Reset category").clicked() {
+                        app.cfg.reset_category(c);
+                        app.mark_dirty();
+                    }
+                });
             });
             ui.add_space(6.0);
             match c {
@@ -108,45 +123,66 @@ pub fn page(app: &mut AquaApp, ui: &mut Ui) {
 
 /// Every feature toggle in a category.
 fn toggles(app: &mut AquaApp, ui: &mut Ui, cat: Category) {
-    let ids: Vec<&'static str> = features::FEATURES.iter().filter(|f| f.category == cat).map(|f| f.id).collect();
-    for id in ids {
-        feature_row(app, ui, id);
+    let ids: Vec<&'static str> = features::FEATURES.iter().filter(|f| f.category == cat && !f.id.starts_with("radio_") && f.id != "similarity_radio").map(|f| f.id).collect();
+    toggle_card(app, ui, "Optional features", &ids);
+}
+
+/// A card of feature rows separated by thin dividers.
+pub fn toggle_card(app: &mut AquaApp, ui: &mut Ui, title: &str, ids: &[&str]) {
+    if ids.is_empty() {
+        return;
     }
+    widgets::card(ui, Some(title), |ui| {
+        for (i, id) in ids.iter().enumerate() {
+            if i > 0 {
+                ui.add_space(2.0);
+                ui.separator();
+            }
+            feature_row(app, ui, id);
+        }
+    });
 }
 
 pub fn feature_row(app: &mut AquaApp, ui: &mut Ui, id: &str) {
     let Some(f) = features::get(id) else { return };
     let mut v = app.cfg.on(id);
     let deps_ok = f.deps.iter().all(|d| app.cfg.active(d));
-    egui::Frame::new().inner_margin(egui::Margin::symmetric(4, 4)).show(ui, |ui| {
-        ui.horizontal(|ui| {
-            let r = ui.checkbox(&mut v, RichText::new(f.name).strong());
-            if r.changed() {
-                app.request_toggle(id, v);
-            }
-            if v && !deps_ok {
-                ui.label(RichText::new("(inactive)").small().weak());
-            }
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.small_button("↺").on_hover_text("Reset to default").clicked() {
-                    app.cfg.reset_feature(id);
-                    app.mark_dirty();
+    ui.horizontal(|ui| {
+        ui.vertical(|ui| {
+            ui.set_width((ui.available_width() - 70.0).max(200.0));
+            ui.horizontal(|ui| {
+                let mut name = RichText::new(f.name).size(14.0).strong();
+                if v && !deps_ok {
+                    name = name.color(ui.visuals().weak_text_color());
+                }
+                ui.label(name);
+                if v && !deps_ok {
+                    ui.label(RichText::new("inactive — needs a disabled feature").size(11.0).color(ui.visuals().weak_text_color()));
+                }
+            });
+            ui.add(egui::Label::new(RichText::new(f.desc).size(12.5).color(ui.visuals().weak_text_color())).wrap());
+            ui.horizontal_wrapped(|ui| {
+                widgets::ram_badge(ui, f, app.measurements.by_feature.get(id));
+                if !f.deps.is_empty() {
+                    let names: Vec<String> = f
+                        .deps
+                        .iter()
+                        .map(|d| {
+                            let n = features::get(d).map(|x| x.name).unwrap_or(d);
+                            if app.cfg.active(d) { format!("{n} ✔") } else { format!("{n} ✖") }
+                        })
+                        .collect();
+                    ui.label(RichText::new(format!("Requires: {}", names.join(", "))).size(11.0).color(ui.visuals().weak_text_color()));
                 }
             });
         });
-        ui.indent(id, |ui| {
-            widgets::ram_badge(ui, f, app.measurements.by_feature.get(id));
-            ui.add(egui::Label::new(RichText::new(f.desc).weak()).wrap());
-            if !f.deps.is_empty() {
-                let names: Vec<String> = f
-                    .deps
-                    .iter()
-                    .map(|d| {
-                        let n = features::get(d).map(|x| x.name).unwrap_or(d);
-                        if app.cfg.active(d) { format!("{n} ✔") } else { format!("{n} ✖") }
-                    })
-                    .collect();
-                ui.label(RichText::new(format!("Requires: {}", names.join(", "))).small().weak());
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui.add(egui::Button::new(RichText::new("↺").size(12.0)).frame(false)).on_hover_text("Reset to default").clicked() {
+                app.cfg.reset_feature(id);
+                app.mark_dirty();
+            }
+            if widgets::switch(ui, &mut v).on_hover_text(if v { "On" } else { "Off" }).changed() {
+                app.request_toggle(id, v);
             }
         });
     });
@@ -534,8 +570,83 @@ fn playback(app: &mut AquaApp, ui: &mut Ui) {
     if d {
         app.mark_dirty();
     }
-    widgets::section(ui, "Optional playback features");
     toggles(app, ui, Category::Playback);
+    radio_settings(app, ui);
+}
+
+fn radio_settings(app: &mut AquaApp, ui: &mut Ui) {
+    ui.add_space(4.0);
+    ui.label(RichText::new("Similarity Radio").size(17.0).strong());
+    widgets::note(ui, "Play a single song from search and Aqua Glass keeps going with similar songs. Only songs that can actually be played (local library, or Spotify with Premium) are queued; songs you add yourself always play first.");
+    ui.add_space(6.0);
+    toggle_card(app, ui, "Radio", &["similarity_radio", "radio_from_search", "radio_from_artist", "radio_from_album", "radio_endless"]);
+    let mut d = false;
+    widgets::card(ui, Some("Discovery"), |ui| {
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Discovery strength");
+            for st in crate::radio::Strength::ALL {
+                if ui.add(egui::Button::new(st.label()).selected(app.cfg.radio.strength == st).corner_radius(12)).on_hover_text(st.describe()).clicked() {
+                    app.cfg.radio.strength = st;
+                    d = true;
+                }
+            }
+        });
+        widgets::note(ui, app.cfg.radio.strength.describe());
+        ui.add_space(6.0);
+        let mut target = app.cfg.radio.target as u32;
+        let mut thr = app.cfg.radio.threshold as u32;
+        slider_u(ui, "Target queue size", &mut target, 5..=50, &mut d);
+        slider_u(ui, "Refill when fewer than", &mut thr, 1..=(target.saturating_sub(1)).max(1), &mut d);
+        app.cfg.radio.target = target as usize;
+        app.cfg.radio.threshold = thr as usize;
+        ui.horizontal(|ui| {
+            ui.label("Preferred provider");
+            egui::ComboBox::from_id_salt("radio_provider").selected_text(app.cfg.radio.provider.label()).show_ui(ui, |ui| {
+                for pv in [crate::radio::RadioProvider::Automatic, crate::radio::RadioProvider::Spotify, crate::radio::RadioProvider::Local, crate::radio::RadioProvider::YouTube] {
+                    if ui.selectable_label(app.cfg.radio.provider == pv, pv.label()).clicked() {
+                        app.cfg.radio.provider = pv;
+                        d = true;
+                    }
+                }
+            });
+        });
+        widgets::note(ui, "Automatic: your local library first, then Spotify when Premium playback is ready. YouTube tracks can't auto-play inside Aqua Glass (they open in the browser), so YouTube is only used when chosen explicitly.");
+    });
+    toggle_card(app, ui, "Rules", &["radio_prefer_unheard", "radio_avoid_recent", "radio_avoid_duplicates", "radio_repeat_artists", "radio_learn", "radio_stay_close"]);
+    widgets::card(ui, Some("Recommendation source"), |ui| {
+        if app.lastfm_key.is_empty() {
+            widgets::warn(ui, "No Last.fm API key: the radio falls back to songs by the same artist / from the same album. Add a key for real similarity recommendations.");
+        } else {
+            widgets::ok(ui, "Last.fm API key stored (Windows Credential Manager).");
+        }
+        ui.horizontal(|ui| {
+            ui.label("Last.fm API key");
+            ui.add(egui::TextEdit::singleline(&mut app.lastfm_input).password(true).desired_width(260.0).hint_text(if app.lastfm_key.is_empty() { "32-character key" } else { "replace stored key" }));
+            if ui.button("Save").clicked() && !app.lastfm_input.trim().is_empty() {
+                let k = app.lastfm_input.trim().to_string();
+                match crate::security::set(crate::security::keys::LASTFM_API_KEY, &k) {
+                    Ok(()) => {
+                        app.lastfm_key = k;
+                        app.lastfm_input.clear();
+                        app.toast("Last.fm key saved.", false);
+                    }
+                    Err(e) => app.toast(format!("Could not store key: {e}"), true),
+                }
+            }
+            if !app.lastfm_key.is_empty() && ui.button("Remove").clicked() {
+                crate::security::delete(crate::security::keys::LASTFM_API_KEY);
+                app.lastfm_key.clear();
+            }
+        });
+        widgets::note(ui, "Free key: last.fm/api/account/create. Aqua Glass sends only the seed song's artist and title (and related artist names) to Last.fm; no account or scrobbling is involved.");
+        if ui.button("Clear listening history").on_hover_text("Used for Recently Played, Prefer Unheard and Avoid Recently Played; stored only on this PC").clicked() {
+            app.history.lock().unwrap().clear();
+            app.toast("Listening history cleared.", false);
+        }
+    });
+    if d {
+        app.mark_dirty();
+    }
 }
 
 const EQ_PRESETS: &[(&str, [f32; 10])] = &[
@@ -1021,65 +1132,122 @@ fn transfer(app: &mut AquaApp, ui: &mut Ui) {
 }
 
 fn performance(app: &mut AquaApp, ui: &mut Ui) {
-    let m = &app.monitor;
-    let cur = m.current_mb();
+    let cur = app.monitor.current_mb();
+    let peak = crate::perf::mb(app.monitor.peak_private_ws);
     let target = app.cfg.perf.ram_target_mb as f32;
-    ui.label(RichText::new("RAM Usage").strong());
-    ui.label(RichText::new(format!("{cur:.0} MB / {target:.0} MB")).size(22.0).strong());
-    widgets::budget_bar(ui, cur, target, app.accent());
-    let rem = target - cur;
-    ui.label(if rem >= 0.0 { format!("{rem:.0} MB remaining") } else { format!("{:.0} MB over target", -rem) });
-    if !m.last.private_exact {
-        widgets::warn(ui, "This system does not report private memory; values show the full working set (including shared system libraries), which overstates Aqua Glass' own usage.");
-    }
-    widgets::sparkline(ui, &m.history.iter().copied().collect::<Vec<_>>(), target, app.accent());
-    egui::Grid::new("perf").num_columns(2).spacing([24.0, 4.0]).show(ui, |ui| {
-        let row = |ui: &mut Ui, k: &str, v: String| {
-            ui.label(k);
-            ui.label(RichText::new(v).monospace());
-            ui.end_row();
-        };
-        row(ui, "Private working set (current)", format!("{:.1} MB", crate::perf::mb(m.last.private_ws)));
-        row(ui, "Peak observed", format!("{:.1} MB", crate::perf::mb(m.peak_private_ws)));
-        row(ui, "Private bytes (commit)", format!("{:.1} MB", crate::perf::mb(m.last.private_bytes)));
-        row(ui, "Working set (incl. shared)", format!("{:.1} MB", crate::perf::mb(m.last.working_set)));
-        row(ui, "CPU usage", format!("{:.1} %", m.cpu_percent));
+    let accent = app.accent();
+    widgets::card(ui, None, |ui| {
+        ui.horizontal(|ui| {
+            ui.vertical(|ui| {
+                ui.label(RichText::new("RAM usage").size(12.0).color(ui.visuals().weak_text_color()));
+                ui.label(RichText::new(format!("{cur:.0} MB / {target:.0} MB")).size(24.0).strong());
+            });
+            ui.add_space(30.0);
+            let stat = |ui: &mut Ui, k: &str, v: String| {
+                ui.vertical(|ui| {
+                    ui.label(RichText::new(k).size(12.0).color(ui.visuals().weak_text_color()));
+                    ui.label(RichText::new(v).size(17.0).strong());
+                });
+                ui.add_space(22.0);
+            };
+            let rem = target - cur;
+            stat(ui, "Remaining", if rem >= 0.0 { format!("{rem:.0} MB") } else { format!("{:.0} MB over", -rem) });
+            stat(ui, "Peak", format!("{peak:.0} MB"));
+            stat(ui, "CPU", format!("{:.1} %", app.monitor.cpu_percent));
+            stat(
+                ui,
+                "Memory saving",
+                match (app.cfg.active("auto_optimizer"), app.pressure) {
+                    (false, _) => "Off".into(),
+                    (true, crate::perf::Pressure::Normal) => "On · idle".into(),
+                    (true, crate::perf::Pressure::Elevated) => "On · trimming caches".into(),
+                    (true, crate::perf::Pressure::Over) => "On · saving hard".into(),
+                },
+            );
+        });
+        widgets::budget_bar(ui, cur, target, accent);
+        if !app.monitor.last.private_exact {
+            widgets::warn(ui, "This system does not report private memory; values show the full working set (including shared system libraries), which overstates Aqua Glass' own usage.");
+        }
+        widgets::sparkline(ui, &app.monitor.history.iter().copied().collect::<Vec<_>>(), target, accent);
+        widgets::note(ui, "Measured live from the operating system (private working set).");
+    });
+    widgets::card(ui, Some("Caches and background work"), |ui| {
         let (art_n, art_b) = {
             let a = app.artwork.lock().unwrap();
             (a.len(), a.used_bytes)
         };
-        row(ui, "Artwork cache (memory)", format!("{} images, {}", art_n, crate::util::fmt_bytes(art_b as u64)));
-        row(ui, "Artwork cache (disk)", crate::util::fmt_bytes(crate::artwork::disk_usage()));
-        row(ui, "Metadata cache (memory, est.)", crate::util::fmt_bytes(app.library.lock().unwrap().loaded_bytes_estimate() as u64));
-        row(ui, "Rendering FPS", format!("{:.0} (repaints only on change)", app.fps));
-        row(ui, "Memory pressure", format!("{:?}", app.pressure));
-        row(ui, "Memory-saving mode", if app.cfg.active("auto_optimizer") { "Automatic optimizer on".into() } else { "Off".into() });
-        let est = features::combined_estimate(&|id| app.cfg.active(id));
-        row(ui, "Combined estimate of enabled features", format!("+{:.0}–{:.0} MB (shared resources counted once)", est.0, est.1));
-        row(ui, "Helper processes", "none (all in-process)".into());
+        egui::Grid::new("perf_caches").num_columns(2).spacing([24.0, 4.0]).show(ui, |ui| {
+            ui.label("Artwork cache (memory)");
+            ui.label(format!("{art_n} images, {}", crate::util::fmt_bytes(art_b as u64)));
+            ui.end_row();
+            ui.label("Artwork cache (disk)");
+            ui.label(crate::util::fmt_bytes(crate::artwork::disk_usage()));
+            ui.end_row();
+            ui.label("Library metadata in memory");
+            ui.label(crate::util::fmt_bytes(app.library.lock().unwrap().loaded_bytes_estimate() as u64));
+            ui.end_row();
+            ui.label("Listening history");
+            ui.label(format!("{} plays", app.history.lock().unwrap().events.len()));
+            ui.end_row();
+        });
+        let mut tasks = vec!["audio output".to_string(), "playback engine".into(), "artwork loader".into()];
+        if app.state.spotify == crate::audio::engine::SpotifyStatus::Ready {
+            tasks.push("Spotify session".into());
+        }
+        if let Some(r) = app.radio_status() {
+            tasks.push(if r.active { "Similarity Radio (active)".into() } else { "Similarity Radio (idle)".into() });
+        }
+        if app.ints.discord.lock().unwrap().is_some() {
+            tasks.push("Discord presence".into());
+        }
+        if app.ints.hotkeys.is_some() {
+            tasks.push("global hotkeys".into());
+        }
+        if app.cfg.active("auto_sync") {
+            tasks.push(format!("auto-sync every {} min", app.cfg.sync.interval_min));
+        }
+        for j in app.jobs.active.lock().unwrap().values() {
+            tasks.push(format!("{} ({}s)", j.label, j.started.elapsed().as_secs()));
+        }
+        ui.add_space(4.0);
+        ui.label(RichText::new("Background tasks").strong());
+        widgets::note(ui, &tasks.join(" · "));
+        ui.horizontal(|ui| {
+            if ui.button("Clear artwork cache").clicked() {
+                app.artwork.lock().unwrap().clear();
+                crate::artwork::clear_disk();
+            }
+            if ui.button("Trim memory now").on_hover_text("Release caches and ask Windows to trim the working set").clicked() {
+                app.artwork.lock().unwrap().clear();
+                app.view.live.clear();
+                app.library.lock().unwrap().evict_except(None);
+                crate::perf::trim_working_set();
+            }
+        });
     });
-    ui.label(RichText::new("Active background tasks").strong());
-    let mut tasks = vec!["audio output (real-time)".to_string(), "playback engine".into(), "artwork loader (idle)".into()];
-    if app.state.spotify == crate::audio::engine::SpotifyStatus::Ready {
-        tasks.push("Spotify session (librespot)".into());
-    }
-    if app.ints.discord.lock().unwrap().is_some() {
-        tasks.push("Discord presence".into());
-    }
-    if app.ints.hotkeys.is_some() {
-        tasks.push("global hotkeys".into());
-    }
-    if app.cfg.active("auto_sync") {
-        tasks.push(format!("auto-sync timer ({} min)", app.cfg.sync.interval_min));
-    }
-    for j in app.jobs.active.lock().unwrap().values() {
-        tasks.push(format!("job: {} ({}s)", j.label, j.started.elapsed().as_secs()));
-    }
-    widgets::note(ui, &tasks.join(" · "));
-    for l in &app.optimizer_log {
-        widgets::note(ui, &format!("optimizer: {l}"));
-    }
-
+    egui::CollapsingHeader::new(RichText::new("Detailed Diagnostics").strong()).default_open(false).show(ui, |ui| {
+        let m = &app.monitor;
+        egui::Grid::new("perf").num_columns(2).spacing([24.0, 4.0]).show(ui, |ui| {
+            let row = |ui: &mut Ui, k: &str, v: String| {
+                ui.label(k);
+                ui.label(RichText::new(v).monospace());
+                ui.end_row();
+            };
+            row(ui, "Private working set", format!("{:.1} MB", crate::perf::mb(m.last.private_ws)));
+            row(ui, "Private bytes (commit)", format!("{:.1} MB", crate::perf::mb(m.last.private_bytes)));
+            row(ui, "Working set (incl. shared)", format!("{:.1} MB", crate::perf::mb(m.last.working_set)));
+            row(ui, "Rendering FPS", format!("{:.0} (repaints only on change)", app.fps));
+            row(ui, "Memory pressure", format!("{:?}", app.pressure));
+            row(ui, "Helper processes", "none (all in-process)".into());
+            let est = features::combined_estimate(&|id| app.cfg.active(id));
+            row(ui, "Estimated cost of enabled features", format!("+{:.0}–{:.0} MB (estimate, shared resources counted once)", est.0, est.1));
+        });
+        for l in &app.optimizer_log {
+            widgets::note(ui, &format!("optimizer: {l}"));
+        }
+    });
+    ui.add_space(8.0);
     widgets::section(ui, "RAM target");
     ui.horizontal_wrapped(|ui| {
         for t in [100, 150, 200, 250, 300] {
@@ -1176,7 +1344,7 @@ fn performance(app: &mut AquaApp, ui: &mut Ui) {
     }
     widgets::section(ui, "Optional performance features");
     toggles(app, ui, Category::Performance);
-    widgets::section(ui, "Measured feature costs on this PC");
+    widgets::section(ui, "Measured feature costs on this PC (real measurements)");
     if app.measurements.by_feature.is_empty() {
         widgets::note(ui, "No measurements yet. Each time you enable a feature, Aqua Glass compares memory before and ~6 s after and records the difference here.");
     }

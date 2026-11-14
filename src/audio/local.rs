@@ -141,7 +141,15 @@ pub fn probe_track(path: &Path) -> Option<Track> {
         title: path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default(),
         ..Default::default()
     };
+    let mut cover: Option<Vec<u8>> = None;
     let mut apply = |rev: &symphonia::core::meta::MetadataRevision| {
+        if cover.is_none() {
+            if let Some(v) = rev.visuals().first() {
+                if v.data.len() < 8 * 1024 * 1024 {
+                    cover = Some(v.data.to_vec());
+                }
+            }
+        }
         for tag in rev.tags() {
             let v = tag.value.to_string();
             match tag.std_key {
@@ -169,6 +177,18 @@ pub fn probe_track(path: &Path) -> Option<Track> {
         }
     }
     t.album_id = format!("local-album:{}", t.album);
+    if let Some(bytes) = cover {
+        // embedded cover art → one cached file per album (the artwork loader downsizes it)
+        use sha2::Digest;
+        let key = if t.album.is_empty() { t.id.clone() } else { format!("{}|{}", t.artists.first().cloned().unwrap_or_default(), t.album) };
+        let h = sha2::Sha256::digest(key.as_bytes());
+        let name: String = h.iter().take(12).map(|b| format!("{b:02x}")).collect();
+        let path = crate::util::cache_dir().join("local-art").join(format!("{name}.img"));
+        if !path.exists() {
+            let _ = crate::util::atomic_write(&path, &bytes);
+        }
+        t.artwork_url = path.to_string_lossy().to_string();
+    }
     Some(t)
 }
 
