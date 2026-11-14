@@ -299,6 +299,17 @@ impl SpotifyApi {
         Ok(())
     }
 
+    /// Remove (unfollow) a playlist from the user's library — Spotify has no hard delete.
+    /// Only called on explicit user request (undo of a transfer).
+    pub fn unfollow_playlist(&self, playlist_id: &str) -> Result<(), ApiError> {
+        let uri = format!("spotify:playlist:{playlist_id}");
+        let u = url::Url::parse_with_params(&format!("{API}/me/library"), &[("uris", uri.as_str())]).unwrap();
+        match self.send(reqwest::Method::DELETE, u.as_str(), None) {
+            Err(ApiError::NotFound) => self.send(reqwest::Method::DELETE, &format!("{API}/playlists/{playlist_id}/followers"), None).map(|_| ()),
+            r => r.map(|_| ()),
+        }
+    }
+
     /// Save a track to Liked Songs (PUT /me/library, falling back to /me/tracks).
     pub fn like(&self, track_id: &str) -> Result<(), ApiError> {
         let uri = format!("spotify:track:{track_id}");

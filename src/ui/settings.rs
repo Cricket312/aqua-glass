@@ -1029,6 +1029,9 @@ fn performance(app: &mut AquaApp, ui: &mut Ui) {
     widgets::budget_bar(ui, cur, target, app.accent());
     let rem = target - cur;
     ui.label(if rem >= 0.0 { format!("{rem:.0} MB remaining") } else { format!("{:.0} MB over target", -rem) });
+    if !m.last.private_exact {
+        widgets::warn(ui, "This system does not report private memory; values show the full working set (including shared system libraries), which overstates Aqua Glass' own usage.");
+    }
     widgets::sparkline(ui, &m.history.iter().copied().collect::<Vec<_>>(), target, app.accent());
     egui::Grid::new("perf").num_columns(2).spacing([24.0, 4.0]).show(ui, |ui| {
         let row = |ui: &mut Ui, k: &str, v: String| {

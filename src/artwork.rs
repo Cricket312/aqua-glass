@@ -340,6 +340,28 @@ mod tests {
         assert!(d[0] > 150 && d[1] < 60);
     }
     #[test]
+    fn lru_eviction_respects_budget_and_frees() {
+        let ctx = egui::Context::default();
+        let mut a = Artwork::new(ctx.clone(), 1, 64);
+        // insert 6 fake 128x128 textures (64 KiB each) directly
+        for i in 0..6 {
+            let img = ColorImage::new([128, 128], vec![egui::Color32::RED; 128 * 128]);
+            let tex = ctx.load_texture(format!("t{i}"), img, TextureOptions::LINEAR);
+            let k = Key { src: format!("s{i}"), kind: Kind::Cover };
+            a.used_bytes += 128 * 128 * 4;
+            a.entries.insert(k, Entry { tex, bytes: 128 * 128 * 4, last_used: Instant::now() - std::time::Duration::from_secs(10 - i as u64), dominant: None });
+        }
+        a.evict_to(3 * 128 * 128 * 4);
+        assert_eq!(a.len(), 3);
+        // oldest were evicted
+        assert!(!a.entries.keys().any(|k| k.src == "s0"));
+        assert!(a.entries.keys().any(|k| k.src == "s5"));
+        a.clear();
+        assert_eq!(a.used_bytes, 0);
+        assert!(a.is_empty());
+    }
+
+    #[test]
     fn local_file_load_and_downscale() {
         let p = std::env::temp_dir().join(format!("aqua-art-{}.png", std::process::id()));
         image::RgbaImage::from_pixel(1000, 500, image::Rgba([10, 200, 220, 255])).save(&p).unwrap();

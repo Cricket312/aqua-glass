@@ -239,7 +239,8 @@ pub enum Cmd {
     ToggleMute,
     SetShuffle(bool),
     SetRepeat(RepeatMode),
-    SpotifyConnect(String),
+    /// Connect Spotify playback; the source is called for a fresh token on every (re)connect.
+    SpotifyConnect(TokenSource),
     SpotifyDisconnect,
     Options(EngineOpts),
     Shutdown,
@@ -287,6 +288,7 @@ pub struct PlayerState {
 }
 
 pub type Listener = Box<dyn FnMut(&PlayerState) + Send>;
+pub type TokenSource = Arc<dyn Fn() -> Result<String, String> + Send + Sync>;
 
 /// Position bookkeeping shared with the UI (lock-free reads).
 #[derive(Default)]
@@ -402,7 +404,7 @@ struct Worker {
     pending_restore_ms: Option<u64>,
     local_token: u64,
     version: u64,
-    last_spotify_token: Option<String>,
+    last_spotify_token: Option<TokenSource>,
 }
 
 impl Worker {
@@ -551,6 +553,11 @@ impl Worker {
                 if let Some(t) = self.last_spotify_token.clone() {
                     self.connect_spotify(t);
                 }
+            } else if self.spotify.is_none() {
+                // reconnect lazily after a dropped session
+                if let Some(t) = self.last_spotify_token.clone() {
+                    self.connect_spotify(t);
+                }
             }
             match &self.spotify {
                 Some(sp) => {
@@ -593,11 +600,18 @@ impl Worker {
     }
 
     #[allow(unused_variables)]
-    fn connect_spotify(&mut self, token: String) {
+    fn connect_spotify(&mut self, source: TokenSource) {
         #[cfg(feature = "spotify-playback")]
         {
-            self.last_spotify_token = Some(token.clone());
+            self.last_spotify_token = Some(source.clone());
             self.publish(|s| s.spotify = SpotifyStatus::Connecting);
+            let token = match source() {
+                Ok(t) => t,
+                Err(e) => {
+                    self.publish(|s| s.spotify = SpotifyStatus::Unavailable(format!("could not get a Spotify token: {e}")));
+                    return;
+                }
+            };
             let opts = super::spotify::PlayerOpts { quality: self.opts.quality, normalisation: self.opts.normalisation, gapless: self.opts.gapless };
             match super::spotify::SpotifyPlayer::connect(&token, &self.out, &opts, self.tx.clone()) {
                 Ok(p) => {
@@ -611,7 +625,10 @@ impl Worker {
             }
         }
         #[cfg(not(feature = "spotify-playback"))]
-        self.publish(|s| s.spotify = SpotifyStatus::Unavailable("built without spotify-playback".into()));
+        {
+            let _ = source;
+            self.publish(|s| s.spotify = SpotifyStatus::Unavailable("built without spotify-playback".into()));
+        }
     }
 
     /// The track being fed finished decoding into the output.

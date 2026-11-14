@@ -19,6 +19,8 @@ pub struct MemSample {
     pub working_set: u64,
     /// Total CPU time used by the process so far.
     pub cpu_time: Duration,
+    /// False when the OS didn't report private memory and `private_ws` falls back to the working set.
+    pub private_exact: bool,
 }
 
 #[cfg(windows)]
@@ -31,8 +33,9 @@ pub fn sample() -> MemSample {
         let h = GetCurrentProcess();
         let mut c2 = PROCESS_MEMORY_COUNTERS_EX2::default();
         c2.cb = std::mem::size_of::<PROCESS_MEMORY_COUNTERS_EX2>() as u32;
-        if GetProcessMemoryInfo(h, &mut c2 as *mut _ as *mut PROCESS_MEMORY_COUNTERS, c2.cb).is_ok() {
+        if GetProcessMemoryInfo(h, &mut c2 as *mut _ as *mut PROCESS_MEMORY_COUNTERS, c2.cb).is_ok() && c2.PrivateWorkingSetSize > 0 {
             s.private_ws = c2.PrivateWorkingSetSize as u64;
+            s.private_exact = true;
             s.private_bytes = c2.PrivateUsage as u64;
             s.working_set = c2.WorkingSetSize as u64;
         } else {
@@ -41,7 +44,9 @@ pub fn sample() -> MemSample {
             if GetProcessMemoryInfo(h, &mut c as *mut _ as *mut PROCESS_MEMORY_COUNTERS, c.cb).is_ok() {
                 s.private_bytes = c.PrivateUsage as u64;
                 s.working_set = c.WorkingSetSize as u64;
-                s.private_ws = c.WorkingSetSize as u64;
+                // older Windows / Wine: no private working set; use the smaller of WS and commit
+                s.private_exact = c.PrivateUsage > 0;
+                s.private_ws = if c.PrivateUsage > 0 { (c.WorkingSetSize as u64).min(c.PrivateUsage as u64) } else { c.WorkingSetSize as u64 };
             }
         }
         let (mut a, mut b, mut k, mut u) = (FILETIME::default(), FILETIME::default(), FILETIME::default(), FILETIME::default());
@@ -61,6 +66,7 @@ pub fn sample() -> MemSample {
             let kb = |l: &str| l.split_whitespace().nth(1).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0) * 1024;
             if line.starts_with("RssAnon:") {
                 s.private_ws = kb(line);
+                s.private_exact = true;
             } else if line.starts_with("VmRSS:") {
                 s.working_set = kb(line);
             } else if line.starts_with("VmData:") {

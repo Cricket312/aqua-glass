@@ -882,10 +882,8 @@ impl AquaApp {
                         let premium_note = if !p.product.is_empty() && p.product != "premium" { " — playback needs Premium" } else { "" };
                         self.toast(format!("Spotify connected: {}{premium_note}", p.display_name), false);
                         self.sp_profile = Some(p);
-                        match self.spotify.access_token(false) {
-                            Ok(tok) => self.engine.send(Cmd::SpotifyConnect(tok)),
-                            Err(e) => self.toast(e.to_string(), true),
-                        }
+                        let api = self.spotify.clone();
+                        self.engine.send(Cmd::SpotifyConnect(Arc::new(move || api.access_token(false).map_err(|e| e.to_string()))));
                         let first = self.library.lock().unwrap().lib(ProviderKind::Spotify).last_sync == 0;
                         if first {
                             self.sync_now(ProviderKind::Spotify, false);
@@ -1664,4 +1662,26 @@ impl AquaApp {
 
 fn icon_play() -> &'static str {
     widgets::icon::PLAY()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn provider_filter() {
+        assert!(Filter::All.allows(ProviderKind::YouTube));
+        assert!(Filter::Only(ProviderKind::Spotify).allows(ProviderKind::Spotify));
+        assert!(!Filter::Only(ProviderKind::Spotify).allows(ProviderKind::Local));
+    }
+    #[test]
+    fn engine_opts_follow_toggles() {
+        let mut c = Config::default();
+        c.set("fades", false);
+        c.set("gapless", false);
+        let o = engine_opts(&c);
+        assert_eq!(o.fade_ms, 0);
+        assert!(!o.gapless);
+        c.set("fades", true);
+        assert_eq!(engine_opts(&c).fade_ms, c.playback.fade_ms);
+    }
 }

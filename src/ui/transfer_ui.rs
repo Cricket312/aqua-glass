@@ -54,15 +54,7 @@ impl TransferUi {
     pub fn remove_created(&mut self, sp: Arc<SpotifyApi>, yt: Arc<YouTubeApi>, jobs: &super::jobs::Jobs, log: TransferLog) {
         jobs.spawn("Delete transferred playlist", move |h| {
             let r = match log.target {
-                ProviderKind::Spotify => {
-                    let tok = sp.access_token(false);
-                    tok.and_then(|t| {
-                        let u = format!("https://api.spotify.com/v1/playlists/{}/followers", log.created_playlist_id);
-                        let resp = crate::services::http().delete(u).bearer_auth(t).send().map_err(|e| crate::services::ApiError::Network(e.to_string()))?;
-                        if resp.status().is_success() { Ok(()) } else { Err(crate::services::ApiError::Other(resp.status().as_u16(), "could not remove playlist".into())) }
-                    })
-                    .map_err(|e| e.to_string())
-                }
+                ProviderKind::Spotify => sp.unfollow_playlist(&log.created_playlist_id).map_err(|e| e.to_string()),
                 ProviderKind::YouTube => yt.delete_playlist(&log.created_playlist_id).map_err(|e| e.to_string()),
                 ProviderKind::Local => Ok(()),
             };

@@ -1,0 +1,10 @@
+baseline_private_mb=65.7
+cycle=5 private_mb=66.7
+cycle=10 private_mb=66.7
+cycle=15 private_mb=66.7
+cycle=20 private_mb=66.7
+cycle=25 private_mb=66.7
+cycle=30 private_mb=66.7
+cycle=35 private_mb=66.7
+cycle=40 private_mb=66.7
+final_private_mb=66.7
