@@ -1,2 +1,0 @@
-Aqua Glass stores its data in %APPDATA%\AquaGlass by default.
-To keep all data next to the exe instead, create an empty file named "portable.txt" in this folder.

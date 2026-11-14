@@ -1,2 +1,0 @@
-87fa3e9b4dd20c5fb87fc8a144d6c50f4a16b60c5d3900bfbb55c053b07e2a86  dist/aqua-glass-0.1.0-windows-x64/aqua-glass.exe
-d3ff2d4677540cfe11f2eed677d783b241bbbe3bbf41a3d453348ade24de3e4b  dist/aqua-glass-0.1.0-windows-x64.zip
