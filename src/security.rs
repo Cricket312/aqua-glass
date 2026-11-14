@@ -75,7 +75,9 @@ pub fn scrub(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for word in s.split_inclusive(char::is_whitespace) {
         let w = word.trim();
-        let looks_secret = w.len() >= 40 && w.chars().all(|c| c.is_ascii_alphanumeric() || "-_.~+/=".contains(c));
+        // file paths (\\dir\\file, /tmp/…, C:\\…) are not secrets
+        let is_path = w.starts_with('/') || w.contains('\\') || w.contains(":\\");
+        let looks_secret = !is_path && w.len() >= 40 && w.chars().all(|c| c.is_ascii_alphanumeric() || "-_.~+/=".contains(c));
         if looks_secret {
             out.push_str("<redacted>");
             if word.ends_with(char::is_whitespace) {
@@ -98,6 +100,11 @@ mod tests {
         assert!(!r.contains("BQDxyz"));
         assert!(r.contains("failed"));
         assert_eq!(format!("{:?}", Redacted("x".into())), "<redacted>");
+        // paths stay readable
+        let p = "saved to /tmp/claude-0/cb/radio-selftest-1794677336.txt";
+        assert_eq!(scrub(p), p);
+        let w = r"saved to C:\Users\someone\AppData\Roaming\AquaGlass\radio-selftest-1794677336.txt";
+        assert_eq!(scrub(w), w);
     }
     #[test]
     fn store_roundtrip() {

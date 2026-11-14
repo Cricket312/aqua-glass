@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.1 — 2026-11-14
+
+### Fixed
+- **Clipboard**: eframe's `clipboard` feature had been disabled together with other default
+  features, so "Copy report" (and any copy from Aqua Glass) only reached an internal
+  clipboard, and Ctrl+V could not paste text copied from other apps (e.g. a Last.fm API key).
+  System clipboard support is re-enabled; verified on Linux/X11 and with the Windows build under Wine.
+- "Copy report" now confirms with a notification; added "Open report file".
+- Notifications no longer show file paths as `<redacted>` (the token scrubber treated long
+  paths as secrets).
+- The self-test report area shows the whole report instead of ~4 lines.
+- The key-storage message no longer claims Windows Credential Manager on non-Windows dev builds.
+
 ## 0.3.0 — 2026-11-14 (reference design + Last.fm live testing)
 
 ### Changed — matched to the supplied Aqua Glass concept image

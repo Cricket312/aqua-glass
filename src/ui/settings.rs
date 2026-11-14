@@ -22,7 +22,7 @@ pub struct SettingsUi {
     pub status: String,
     pub selftest_artist: String,
     pub selftest_title: String,
-    pub selftest_result: std::sync::Arc<std::sync::Mutex<Option<String>>>,
+    pub selftest_result: std::sync::Arc<std::sync::Mutex<Option<(String, std::path::PathBuf)>>>,
 }
 
 impl Default for Category {
@@ -620,7 +620,7 @@ fn radio_settings(app: &mut AquaApp, ui: &mut Ui) {
         if app.lastfm_key.is_empty() {
             widgets::warn(ui, "No Last.fm API key: the radio falls back to songs by the same artist / from the same album. Add a key for real similarity recommendations.");
         } else {
-            widgets::ok(ui, "Last.fm API key stored (Windows Credential Manager).");
+            widgets::ok(ui, if crate::security::persistent() { "Last.fm API key stored (Windows Credential Manager)." } else { "Last.fm API key set for this session (development build: not saved to disk)." });
         }
         ui.horizontal(|ui| {
             ui.label("Last.fm API key");
@@ -667,19 +667,29 @@ fn radio_settings(app: &mut AquaApp, ui: &mut Ui) {
                     let _ = crate::util::atomic_write(&path, r.report.as_bytes());
                     let summary = format!("Last.fm self-test: {} passed, {} failed — report saved to {}", r.passed, r.failed, path.display());
                     let failed = !r.ok_or_empty();
-                    *out.lock().unwrap() = Some(r.report);
+                    *out.lock().unwrap() = Some((r.report, path.clone()));
                     h.send(super::jobs::Msg::Toast(summary, failed));
                 });
             }
         });
         let res = app.settings.selftest_result.lock().unwrap().clone();
-        if let Some(rep) = res {
+        if let Some((rep, path)) = res {
             egui::CollapsingHeader::new("Last self-test report").default_open(true).show(ui, |ui| {
-                egui::ScrollArea::vertical().max_height(260.0).show(ui, |ui| {
+                egui::ScrollArea::vertical().id_salt("selftest_report").min_scrolled_height(220.0).max_height(320.0).show(ui, |ui| {
                     ui.add(egui::Label::new(RichText::new(&rep).monospace().size(11.5)).wrap());
                 });
-                if ui.small_button("Copy report").clicked() {
-                    ui.ctx().copy_text(rep.clone());
+                let mut copied = false;
+                ui.horizontal(|ui| {
+                    if ui.small_button("Copy report").clicked() {
+                        ui.ctx().copy_text(rep.clone());
+                        copied = true;
+                    }
+                    if ui.small_button("Open report file").on_hover_text(path.display().to_string()).clicked() {
+                        let _ = open::that_detached(&path);
+                    }
+                });
+                if copied {
+                    app.toast("Self-test report copied to the clipboard.", false);
                 }
             });
         }
