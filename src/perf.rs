@@ -86,6 +86,43 @@ pub fn sample() -> MemSample {
     s
 }
 
+/// Memory of another process (the Spotify Soloist helper): (private, working set) bytes.
+/// Private = private working set on Windows / anonymous RSS on Linux — the same
+/// measure Aqua Glass uses for itself, so the two can be added up.
+#[cfg(windows)]
+pub fn process_memory(pid: u32) -> Option<(u64, u64)> {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::ProcessStatus::*;
+    use windows::Win32::System::Threading::*;
+    unsafe {
+        let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
+        let mut c2 = PROCESS_MEMORY_COUNTERS_EX2::default();
+        c2.cb = std::mem::size_of::<PROCESS_MEMORY_COUNTERS_EX2>() as u32;
+        let r = if GetProcessMemoryInfo(h, &mut c2 as *mut _ as *mut PROCESS_MEMORY_COUNTERS, c2.cb).is_ok() {
+            // older Windows / Wine report no private working set: fall back to the
+            // working set (an over-estimate, never a misleading zero)
+            let private = if c2.PrivateWorkingSetSize > 0 { c2.PrivateWorkingSetSize as u64 } else { c2.WorkingSetSize as u64 };
+            Some((private, c2.WorkingSetSize as u64))
+        } else {
+            None
+        };
+        let _ = CloseHandle(h);
+        r
+    }
+}
+
+#[cfg(not(windows))]
+pub fn process_memory(pid: u32) -> Option<(u64, u64)> {
+    let st = std::fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
+    let kb = |key: &str| st.lines().find(|l| l.starts_with(key)).and_then(|l| l.split_whitespace().nth(1)).and_then(|v| v.parse::<u64>().ok()).map(|v| v * 1024);
+    Some((kb("RssAnon:")?, kb("VmRSS:")?))
+}
+
+/// Private memory of another process, bytes.
+pub fn process_memory_bytes(pid: u32) -> Option<u64> {
+    process_memory(pid).map(|m| m.0)
+}
+
 /// Ask Windows to trim the working set (pages move to standby; nothing is lost).
 pub fn trim_working_set() {
     #[cfg(windows)]

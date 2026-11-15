@@ -132,6 +132,8 @@ pub struct AquaApp {
     pub back: Vec<Page>,
     pub forward: Vec<Page>,
     pub featured_idx: usize,
+    /// Settings signature Soloist was last started with (see `ensure_soloist`).
+    pub soloist_sig: Option<u64>,
     pub filter: Filter,
     pub engine: Engine,
     pub out: Output,
@@ -268,6 +270,7 @@ impl AquaApp {
             back: Vec::new(),
             forward: Vec::new(),
             featured_idx: 0,
+            soloist_sig: None,
             filter: Filter::All,
             engine,
             out,
@@ -539,6 +542,40 @@ impl AquaApp {
         log::info!("removed legacy YouTube Music data");
     }
 
+    /// Soloist's data folder: its own device identity and stored Spotify Connect session.
+    pub fn soloist_data_dir(&self) -> std::path::PathBuf {
+        let d = self.cfg.services.soloist_data_dir.trim();
+        if d.is_empty() { crate::util::data_dir().join("soloist") } else { std::path::PathBuf::from(d) }
+    }
+
+    /// Start, restart or stop Spotify Soloist to match the settings. Only acts when
+    /// something relevant changed (or `force`), so it's cheap to call every frame.
+    pub fn ensure_soloist(&mut self, force: bool) {
+        use std::hash::{Hash, Hasher};
+        let s = &self.cfg.services;
+        let want = s.spotify_enabled && s.spotify_backend == crate::config::SpotifyBackend::Soloist && (!s.soloist_manage || !s.soloist_path.trim().is_empty());
+        let key = crate::security::get(crate::security::keys::SOLOIST_API_KEY).unwrap_or_default();
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        (want, s.soloist_path.trim(), s.soloist_device_name.trim(), s.soloist_manage, self.soloist_data_dir(), &key).hash(&mut h);
+        let sig = h.finish();
+        if !force && self.soloist_sig == Some(sig) {
+            return;
+        }
+        self.soloist_sig = Some(sig);
+        if !want {
+            self.engine.send(Cmd::SoloistStop);
+            return;
+        }
+        let name = if s.soloist_device_name.trim().is_empty() { "Aqua Glass".to_string() } else { s.soloist_device_name.trim().to_string() };
+        self.engine.send(Cmd::SoloistStart(crate::audio::soloist::SoloistConfig {
+            exe: std::path::PathBuf::from(s.soloist_path.trim()),
+            api_key: key,
+            device_name: name,
+            data_dir: self.soloist_data_dir(),
+            manage: s.soloist_manage,
+        }));
+    }
+
     pub fn spotify_login(&mut self) {
         self.sp_status = "Waiting for browser sign-in…".into();
         let api = self.spotify.clone();
@@ -798,9 +835,10 @@ impl AquaApp {
             self.font_applied = want_font;
         }
         // audio engine options
-        if changed(&|c: &Config| format!("{:?}{:?}", c.playback.quality, c.playback.fade_ms)) || feat_changed(&["normalization", "gapless", "fades"]) {
+        if changed(&|c: &Config| format!("{:?}{:?}{:?}", c.playback.quality, c.playback.fade_ms, c.services.spotify_backend)) || feat_changed(&["normalization", "gapless", "fades"]) {
             self.engine.send(Cmd::Options(engine_opts(c)));
         }
+        self.ensure_soloist(false);
         // DSP
         self.out.s.dsp.set(crate::audio::dsp::DspParams {
             eq_on: c.active("eq"),
@@ -993,7 +1031,9 @@ impl AquaApp {
                         self.sp_profile = Some(p);
                         let api = self.spotify.clone();
                         log::info!("Spotify signed in (product: {}); playback session: {}", p_product_dbg(&self.sp_profile), self.spotify.playback_signed_in());
-                        if self.spotify.playback_signed_in() {
+                        if self.cfg.services.spotify_backend == crate::config::SpotifyBackend::Soloist {
+                            // Soloist plays the audio; it pairs through Spotify Connect, not with this token
+                        } else if self.spotify.playback_signed_in() {
                             self.engine.send(Cmd::SpotifyConnect(Arc::new(move || api.playback_token().map_err(|e| e.to_string()))));
                         } else {
                             self.toast("Library connected with your own Spotify app. Sign in once more for Premium playback (Settings › Music Services).", false);
@@ -1425,6 +1465,7 @@ pub fn engine_opts(c: &Config) -> EngineOpts {
         normalisation: c.active("normalization"),
         gapless: c.active("gapless"),
         fade_ms: if c.active("fades") { c.playback.fade_ms } else { 0 },
+        spotify_backend: c.services.spotify_backend,
     }
 }
 

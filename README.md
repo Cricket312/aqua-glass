@@ -76,12 +76,12 @@ cookies are ever entered into Aqua Glass.
 
 * **Playback requires Spotify Premium** — this is enforced by Spotify. Library import,
   synchronization, search, export and transfer also work with Free accounts.
-* Playback is provided by [librespot](https://github.com/librespot-org/librespot), the
-  open-source Spotify Connect library used by spotifyd, ncspot and others. Like those
-  projects, Aqua Glass signs in with librespot's public client id by default so that
-  one login covers both the Web API (library) and playback. librespot is unofficial;
-  Spotify's developer terms restrict third-party streaming clients, so use it at your
-  own discretion. There is no DRM circumvention in Aqua Glass itself.
+* **Playback goes through Spotify Soloist** (default since 0.7), Spotify's official
+  headless player. See [Spotify playback with Soloist](#spotify-playback-with-soloist) below.
+  The older built-in [librespot](https://github.com/librespot-org/librespot) player
+  remains as an option. It is unofficial, and since late 2025 Spotify refuses its audio
+  keys for many accounts, so songs skip without playing; Aqua Glass now detects this and
+  says so. There is no DRM circumvention in Aqua Glass.
 * **Rate limiting.** Spotify limits Web API requests *per app*. By default Aqua Glass uses
   librespot's public app, whose quota is shared with every librespot-based player, so heavy
   use elsewhere can get it throttled. Aqua Glass:
@@ -113,6 +113,51 @@ upgrading use Playlist Transfer in 0.4.x to copy them to Spotify or export them 
 JSON/CSV; 0.6's Playlist Transfer can import those files and match them on Spotify.
 (Google Takeout's playlist CSVs contain only video ids, not titles, so they can't be
 matched.)
+
+### Spotify playback with Soloist
+
+[Spotify Soloist](https://developer.spotify.com/documentation/soloist) is Spotify's
+official headless Spotify Connect player. It runs as a separate background program
+(no window) and plays the audio. Aqua Glass stays your only music interface: it keeps
+its own queue, manual-queue priority and Similarity Radio, and tells Soloist which song
+to play over Soloist's local WebSocket API.
+
+Setup, once (Settings › Music Services › Spotify playback):
+
+1. Download the **Windows x86_64** build from Spotify's
+   [downloads page](https://developer.spotify.com/documentation/soloist/reference/downloads-and-updates)
+   and extract the ZIP. Aqua Glass never bundles or redistributes Soloist.
+2. Generate your **Soloist API key** at <https://developer.spotify.com/dashboard/soloist>
+   (needs Premium; the key is for you only).
+3. In Aqua Glass choose `soloist.exe`, paste the key and click **Save securely**. The key is
+   stored in Windows Credential Manager. Aqua Glass starts Soloist in the background.
+4. **Pair once:** open Spotify on your phone or PC (same network), tap the devices icon and
+   choose **Aqua Glass**. Soloist remembers the pairing in its data folder
+   (`<Aqua Glass data>\soloist`).
+
+Details:
+
+* **Updates:** Soloist builds stop working **90 days** after their build date (exit code
+  10). Settings shows the days left and warns two weeks ahead. To update, download the
+  new ZIP and replace `soloist.exe`. Keep the same data folder and it stays paired.
+* **Security:**
+  * Aqua Glass always starts Soloist with `--ws 127.0.0.1:0` and refuses to connect to a
+    non-local address; Soloist's control socket has no authentication of its own.
+  * Soloist accepts its API key only on the command line, so other programs on the PC
+    that can list processes could read it while Soloist runs (a Soloist limitation).
+  * Soloist announces itself on the local network for Spotify Connect pairing.
+  * Aqua Glass ties Soloist to a Windows job object, so it also stops if Aqua Glass
+    crashes.
+* **What differs from in-app playback:**
+  * Soloist outputs audio itself, so Aqua Glass' EQ, visualizer, normalization and
+    crossfade don't apply to Spotify songs.
+  * Songs don't play gaplessly: there is a short gap between songs.
+  * The volume slider sets Soloist's volume.
+  * Pausing or skipping from the Spotify app is reflected in Aqua Glass.
+* **Memory:** Soloist is a separate process. The Performance page shows its memory and the
+  combined total next to the 200 MB target. Measured here with the official Linux x86_64
+  build, idle and unpaired: about 25 MB resident (≈3 MB of it private). Memory while
+  streaming and on Windows has **not been measured yet**.
 
 ### Local files
 
@@ -417,6 +462,10 @@ Honest list of what is not done or not verified:
   registry autostart and DWM acrylic were not exercised (Wine doesn't implement them
   faithfully), and Wine doesn't report private memory counters (the dashboard says so). The Windows memory figures in
   the app come from Windows itself; the numbers in docs/BENCHMARKS.md are from Linux.
+* **Soloist playback has not been heard end to end here.** The integration was run against
+  the real Soloist binary (start, local API, events, refusal before pairing, shutdown), and
+  the engine against a protocol-accurate fake. Pairing and actual streaming need a Premium
+  account and a Soloist API key, which the build environment doesn't have.
 * **Spotify was not tested against the live service** (no credentials or
   network route to them in the build environment). Parsing is tested against fixtures that
   follow the documented response formats, but end-to-end sign-in, sync, playback and

@@ -296,6 +296,36 @@ pub struct ServicesCfg {
     pub local_folders: Vec<String>,
     /// Discord application id used for Rich Presence (not a secret).
     pub discord_app_id: String,
+    /// Which program plays Spotify audio.
+    pub spotify_backend: SpotifyBackend,
+    /// Full path to soloist.exe (downloaded by the user from Spotify; never bundled).
+    pub soloist_path: String,
+    /// Spotify Connect device name Soloist announces.
+    pub soloist_device_name: String,
+    /// Aqua Glass starts Soloist when needed and stops it on exit. Off = connect to a
+    /// Soloist you run yourself (its data folder must be the one below).
+    pub soloist_manage: bool,
+    /// Soloist data folder (device identity + stored Spotify Connect session).
+    /// Empty = `<Aqua Glass data>\soloist`.
+    pub soloist_data_dir: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum SpotifyBackend {
+    /// Spotify's official headless client (separate process, local WebSocket API).
+    #[default]
+    Soloist,
+    /// Built-in librespot (open-source; Spotify refuses audio keys for many accounts).
+    Librespot,
+}
+
+impl SpotifyBackend {
+    pub fn label(self) -> &'static str {
+        match self {
+            SpotifyBackend::Soloist => "Spotify Soloist (official, recommended)",
+            SpotifyBackend::Librespot => "Built-in librespot (unofficial)",
+        }
+    }
 }
 impl Default for ServicesCfg {
     fn default() -> Self {
@@ -306,6 +336,11 @@ impl Default for ServicesCfg {
             spotify_redirect_port: 8898,
             local_folders: Vec::new(),
             discord_app_id: String::new(),
+            spotify_backend: SpotifyBackend::Soloist,
+            soloist_path: String::new(),
+            soloist_device_name: "Aqua Glass".into(),
+            soloist_manage: true,
+            soloist_data_dir: String::new(),
         }
     }
 }

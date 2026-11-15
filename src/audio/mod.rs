@@ -5,6 +5,7 @@ pub mod engine;
 #[cfg(feature = "local-files")]
 pub mod local;
 pub mod output;
+pub mod soloist;
 #[cfg(feature = "spotify-playback")]
 pub mod spotify;
 pub mod visualizer;

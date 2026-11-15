@@ -24,11 +24,13 @@ pub struct EngineOpts {
     pub normalisation: bool,
     pub gapless: bool,
     pub fade_ms: u32,
+    /// Which program plays Spotify tracks.
+    pub spotify_backend: crate::config::SpotifyBackend,
 }
 
 impl Default for EngineOpts {
     fn default() -> Self {
-        EngineOpts { quality: Quality::Normal160, normalisation: false, gapless: true, fade_ms: 0 }
+        EngineOpts { quality: Quality::Normal160, normalisation: false, gapless: true, fade_ms: 0, spotify_backend: crate::config::SpotifyBackend::Soloist }
     }
 }
 
@@ -62,6 +64,9 @@ pub enum Cmd {
     SpotifyConnect(TokenSource),
     SpotifyDisconnect,
     Options(EngineOpts),
+    /// Start (or attach to) Spotify Soloist; replaces a running one.
+    SoloistStart(super::soloist::SoloistConfig),
+    SoloistStop,
     Shutdown,
 }
 
@@ -76,12 +81,17 @@ pub enum EngineEvent {
     SpotifyRequestId(u64),
     SpotifyDisconnected,
     SpotifyConnected(Result<(), String>),
+    SoloistStarted(Result<super::soloist::Soloist, String>),
+    Soloist(super::soloist::Event),
 }
 
 
 
 
 pub type Listener = aqua_core::playback::StateListener;
+
+/// Shown while Soloist runs but no Spotify account has selected it yet.
+pub const NOT_PAIRED: &str = "Spotify Soloist isn't paired yet: open Spotify on your phone or PC, tap the devices icon and choose “Aqua Glass” once. After that it stays paired.";
 pub type TokenSource = Arc<dyn Fn() -> Result<String, String> + Send + Sync>;
 
 /// Position bookkeeping shared with the UI (lock-free reads).
@@ -90,6 +100,29 @@ pub struct Clock {
     pub track_start_frame: AtomicU64,
     pub base_ms: AtomicU64,
     pub duration_ms: AtomicU64,
+    /// Position comes from an external player (Soloist) instead of our output.
+    pub external: std::sync::atomic::AtomicBool,
+    pub ext_position_ms: AtomicU64,
+    pub ext_timestamp_ms: std::sync::atomic::AtomicI64,
+    /// speed × 1000 (0 = paused)
+    pub ext_speed_milli: AtomicU64,
+}
+
+impl Clock {
+    fn external_position(&self) -> u64 {
+        let a = super::soloist::PosAnchor {
+            position_ms: self.ext_position_ms.load(Ordering::Relaxed),
+            timestamp_ms: self.ext_timestamp_ms.load(Ordering::Relaxed),
+            speed: self.ext_speed_milli.load(Ordering::Relaxed) as f64 / 1000.0,
+        };
+        a.estimate(aqua_core::storage::now_millis())
+    }
+    fn set_external(&self, a: super::soloist::PosAnchor) {
+        self.ext_position_ms.store(a.position_ms, Ordering::Relaxed);
+        self.ext_timestamp_ms.store(a.timestamp_ms, Ordering::Relaxed);
+        self.ext_speed_milli.store((a.speed.max(0.0) * 1000.0) as u64, Ordering::Relaxed);
+        self.external.store(true, Ordering::Relaxed);
+    }
 }
 
 #[derive(Clone)]
@@ -136,6 +169,15 @@ impl Engine {
             sp_load_frame: 0,
             sp_loaded_at: Instant::now(),
             sp_failures: 0,
+            soloist: None,
+            so_logged_in: false,
+            so_active: false,
+            so_expect: None,
+            so_seen: false,
+            so_start_ms: 0,
+            so_start_paused: false,
+            so_status: super::soloist::Status::Idle,
+            so_deadline: None,
         };
         std::thread::Builder::new()
             .name("playback-engine".into())
@@ -154,6 +196,11 @@ impl Engine {
 
     /// Audible position of the current track.
     pub fn position_ms(&self) -> u64 {
+        if self.clock.external.load(Ordering::Relaxed) {
+            let dur = self.clock.duration_ms.load(Ordering::Relaxed);
+            let p = self.clock.external_position();
+            return if dur > 0 { p.min(dur) } else { p };
+        }
         let rate = self.out.rate().max(1) as u64;
         let consumed = self.out.s.consumed.load(Ordering::Relaxed);
         let start = self.clock.track_start_frame.load(Ordering::Relaxed);
@@ -240,6 +287,8 @@ enum Active {
     None,
     Local(super::local::Decoding),
     Spotify,
+    /// Spotify Soloist plays the current track (separate process).
+    Soloist,
 }
 
 /// A track that has started feeding the output but is not yet audible (gapless).
@@ -284,6 +333,16 @@ struct Worker {
     sp_loaded_at: Instant,
     /// Spotify tracks in a row that failed to produce any audio.
     sp_failures: u32,
+    soloist: Option<super::soloist::Soloist>,
+    so_logged_in: bool,
+    so_active: bool,
+    /// URI we asked Soloist to play, and whether Soloist has confirmed it.
+    so_expect: Option<String>,
+    so_seen: bool,
+    so_start_ms: u64,
+    so_start_paused: bool,
+    so_status: super::soloist::Status,
+    so_deadline: Option<Instant>,
 }
 
 impl Worker {
@@ -351,11 +410,17 @@ impl Worker {
         if let (Active::Spotify, Some(sp)) = (&self.active, &self.spotify) {
             sp.stop();
         }
+        if let (Active::Soloist, Some(so)) = (&self.active, &self.soloist) {
+            so.send(super::soloist::Command::Pause);
+        }
+        self.so_expect = None;
+        self.so_deadline = None;
         self.active = Active::None;
         self.out.flush();
     }
 
     fn reset_clock(&mut self, base_ms: u64) {
+        self.clock.external.store(false, Ordering::Relaxed);
         self.clock.track_start_frame.store(self.out.s.pushed.load(Ordering::Relaxed), Ordering::Relaxed);
         self.clock.base_ms.store(base_ms, Ordering::Relaxed);
         // consumed may lag pushed by in-flight callback frames; align
@@ -389,6 +454,7 @@ impl Worker {
         });
         match track.provider {
             ProviderKind::Local => self.start_local(&track, start_ms),
+            ProviderKind::Spotify if self.opts.spotify_backend == crate::config::SpotifyBackend::Soloist => self.start_soloist(&track, start_ms, play),
             ProviderKind::Spotify => self.start_spotify(&track, start_ms as u32),
             ProviderKind::YouTube => {
                 // left over from a queue saved before 0.6 (YouTube Music support was removed)
@@ -479,7 +545,18 @@ impl Worker {
     fn spotify_failed(&mut self) {
         self.sp_failures += 1;
         let title = self.q.current().map(|t| t.title.clone()).unwrap_or_default();
-        let why = crate::util::playback_error_since(self.sp_loaded_at).map(|e| format!(" ({e})")).unwrap_or_default();
+        let reason = crate::util::playback_error_since(self.sp_loaded_at);
+        if reason.as_deref().is_some_and(|e| e.contains("audio key")) {
+            // Spotify refuses librespot's decryption keys for this account: every song
+            // will fail the same way, so don't skip through the queue
+            self.sp_failures = 0;
+            self.stop_all();
+            self.playing = false;
+            self.out.set_paused(true);
+            self.set_error("Spotify refused the audio key for librespot (a known Spotify-side block on many accounts). Switch Spotify playback to Spotify Soloist in Settings › Music Services.");
+            return;
+        }
+        let why = reason.map(|e| format!(" ({e})")).unwrap_or_default();
         if self.sp_failures >= 3 {
             self.sp_failures = 0;
             self.stop_all();
@@ -488,10 +565,12 @@ impl Worker {
             self.set_error(format!("Spotify couldn't play 3 songs in a row{why}. Playback stopped. Check that your account is Premium; --debug-log records details."));
             return;
         }
-        self.set_error(format!("Spotify couldn't play “{title}”{why} — skipping."));
+        let msg = format!("Spotify couldn't play “{title}”{why} — skipped.");
         if self.q.advance(false).is_some() {
             self.start_current(0, true);
+            self.set_error(msg); // after start_current, which clears errors
         } else {
+            self.set_error(msg);
             self.playing = false;
             self.publish(|_| {});
         }
@@ -502,12 +581,18 @@ impl Worker {
         if let (Active::Spotify, Some(sp)) = (&self.active, &self.spotify) {
             sp.pause();
         }
+        if let (Active::Soloist, Some(so)) = (&self.active, &self.soloist) {
+            so.send(super::soloist::Command::Pause);
+        }
     }
 
     fn resume_backend(&mut self) {
         #[cfg(feature = "spotify-playback")]
         if let (Active::Spotify, Some(sp)) = (&self.active, &self.spotify) {
             sp.play();
+        }
+        if let (Active::Soloist, Some(so)) = (&self.active, &self.soloist) {
+            so.send(super::soloist::Command::Play(None));
         }
     }
 
@@ -571,6 +656,12 @@ impl Worker {
     }
 
     fn check_boundary(&mut self) {
+        if self.so_deadline.is_some_and(|d| Instant::now() > d) {
+            self.so_deadline = None;
+            let title = self.q.current().map(|t| t.title.clone()).unwrap_or_default();
+            self.playing = false;
+            self.set_error(format!("Spotify Soloist didn't start “{title}” within 20 seconds. Check that Soloist is running and paired (Settings › Music Services)."));
+        }
         loop {
             let Some(p) = self.pending.front() else { return };
             let consumed = self.out.s.consumed.load(Ordering::Relaxed);
@@ -625,7 +716,8 @@ impl Worker {
                 }
                 // librespot also reports "end of track" when it can't fetch/decode audio
                 let pushed = self.out.s.pushed.load(Ordering::Relaxed).saturating_sub(self.sp_load_frame);
-                if pushed < self.out.rate().max(1) as u64 {
+                let key_refused = crate::util::playback_error_since(self.sp_loaded_at).is_some_and(|e| e.contains("audio key"));
+                if key_refused || pushed < self.out.rate().max(1) as u64 {
                     self.spotify_failed();
                 } else {
                     self.sp_failures = 0;
@@ -669,6 +761,21 @@ impl Worker {
                 }
             }
             EngineEvent::SpotifyConnected(_) => {}
+            EngineEvent::SoloistStarted(r) => match r {
+                Ok(so) => {
+                    let pid = so.pid;
+                    let st = self.state.read().unwrap().clone();
+                    let v = if st.muted { 0.0 } else { st.volume };
+                    so.send(super::soloist::Command::SetVolume((v.clamp(0.0, 1.0) * 100.0).round() as u8));
+                    self.soloist = Some(so);
+                    self.publish(|s| s.helper_pid = pid);
+                }
+                Err(e) => {
+                    log::warn!("Soloist: {e}");
+                    self.publish(|s| s.spotify = SpotifyStatus::Unavailable(format!("Spotify Soloist: {e}")));
+                }
+            },
+            EngineEvent::Soloist(e) => self.soloist_event(e),
         }
     }
 
@@ -818,11 +925,18 @@ impl Worker {
             }
             Cmd::SetVolume(v) => {
                 self.out.set_volume(v);
+                if let Some(so) = &self.soloist {
+                    so.send(super::soloist::Command::SetVolume((v.clamp(0.0, 1.0) * 100.0).round() as u8));
+                }
                 self.publish(|s| s.volume = v.clamp(0.0, 1.0));
             }
             Cmd::ToggleMute => {
                 let m = !self.state.read().unwrap().muted;
                 self.out.set_muted(m);
+                if let Some(so) = &self.soloist {
+                    let v = if m { 0.0 } else { self.state.read().unwrap().volume };
+                    so.send(super::soloist::Command::SetVolume((v * 100.0).round() as u8));
+                }
                 self.publish(|s| s.muted = m);
             }
             Cmd::SetShuffle(on) => {
@@ -867,11 +981,207 @@ impl Worker {
                 }
                 let _ = recreate;
             }
+            Cmd::SoloistStart(cfg) => {
+                self.soloist = None; // stops a managed Soloist we started before
+                self.so_logged_in = false;
+                self.publish(|s| {
+                    s.spotify = SpotifyStatus::Connecting;
+                    s.helper_pid = None;
+                });
+                let tx = self.tx.clone();
+                // starting can take seconds — don't block playback of local files
+                std::thread::Builder::new()
+                    .name("soloist-start".into())
+                    .spawn(move || {
+                        let t2 = tx.clone();
+                        let r = super::soloist::Soloist::start(&cfg, move |e| {
+                            let _ = t2.send(EngineEvent::Soloist(e));
+                        });
+                        let _ = tx.send(EngineEvent::SoloistStarted(r));
+                    })
+                    .ok();
+            }
+            Cmd::SoloistStop => {
+                if matches!(self.active, Active::Soloist) {
+                    self.stop_all();
+                    self.playing = false;
+                }
+                self.soloist = None;
+                self.so_logged_in = false;
+                self.publish(|s| {
+                    s.spotify = SpotifyStatus::Disconnected;
+                    s.helper_pid = None;
+                });
+            }
             Cmd::Shutdown => {}
         }
     }
 
+    /// Play a Spotify track through Soloist.
+    fn start_soloist(&mut self, track: &Track, start_ms: u64, play: bool) {
+        use super::soloist::{Command as SC, PosAnchor};
+        let Some(so) = &self.soloist else {
+            let msg = match self.state.read().unwrap().spotify.clone() {
+                SpotifyStatus::Unavailable(e) => e,
+                SpotifyStatus::Connecting => "Spotify Soloist is starting — try again in a moment.".into(),
+                _ => "Set up Spotify Soloist in Settings › Music Services to play Spotify songs.".into(),
+            };
+            self.set_error(msg);
+            return;
+        };
+        if !self.so_logged_in {
+            self.set_error(NOT_PAIRED);
+            return;
+        }
+        if !self.so_active {
+            so.send(SC::Activate);
+        }
+        let uri = if track.uri.is_empty() { format!("spotify:track:{}", track.id) } else { track.uri.clone() };
+        so.send(SC::Play(Some(uri.clone())));
+        self.so_expect = Some(uri);
+        self.so_seen = false;
+        self.so_start_ms = start_ms;
+        self.so_start_paused = !play;
+        self.so_deadline = Some(Instant::now() + Duration::from_secs(20));
+        self.active = Active::Soloist;
+        self.clock.set_external(PosAnchor { position_ms: start_ms, timestamp_ms: aqua_core::storage::now_millis(), speed: 0.0 });
+    }
+
+    /// The Soloist track finished (or Soloist moved on by itself): continue with our queue.
+    fn soloist_track_ended(&mut self) {
+        self.so_expect = None;
+        self.so_seen = false;
+        self.so_deadline = None;
+        let dur = self.q.current().map(|t| t.duration_ms).unwrap_or(0);
+        self.leave_hint = Some((dur, true));
+        if self.q.advance(true).is_some() {
+            self.start_current(0, true);
+        } else {
+            if let Some(so) = &self.soloist {
+                so.send(super::soloist::Command::Pause); // don't let Spotify autoplay take over
+            }
+            self.active = Active::None;
+            self.playing = false;
+            self.publish(|_| {});
+        }
+    }
+
+    fn soloist_event(&mut self, e: super::soloist::Event) {
+        use super::soloist::Event as E;
+        let ours = matches!(self.active, Active::Soloist);
+        match e {
+            E::Connected => {}
+            E::Auth { logged_in, active, .. } => {
+                self.so_logged_in = logged_in;
+                self.so_active = active;
+                self.publish(|s| s.spotify = if logged_in { SpotifyStatus::Ready } else { SpotifyStatus::Unavailable(NOT_PAIRED.into()) });
+            }
+            E::Active(a) => self.so_active = a,
+            E::Track { uri, duration_ms } => self.soloist_track(ours, uri, duration_ms),
+            E::State { status, uri, duration_ms, position, .. } => {
+                self.soloist_track(ours, uri, duration_ms);
+                if ours && self.so_seen {
+                    self.clock.set_external(position);
+                }
+                self.soloist_status(ours, status);
+            }
+            E::Playback(st) => self.soloist_status(ours, st),
+            E::Position(a) => {
+                if ours && self.so_seen {
+                    self.clock.set_external(a);
+                    self.publish(|_| {});
+                }
+            }
+            E::Error(m) => {
+                if m.contains("auth") {
+                    self.so_logged_in = false;
+                    self.publish(|s| s.spotify = SpotifyStatus::Unavailable(NOT_PAIRED.into()));
+                    if ours {
+                        self.playing = false;
+                        self.set_error(NOT_PAIRED);
+                    }
+                } else if ours {
+                    self.set_error(format!("Spotify Soloist: {m}"));
+                }
+            }
+            E::Down(m) => {
+                if m.contains("stopped") || m.contains("expired") {
+                    self.soloist = None;
+                }
+                self.so_logged_in = false;
+                if ours {
+                    self.active = Active::None;
+                    self.playing = false;
+                    self.so_expect = None;
+                    self.set_error(m.clone());
+                }
+                self.publish(|s| s.spotify = SpotifyStatus::Unavailable(m));
+            }
+        }
+    }
+
+    fn soloist_track(&mut self, ours: bool, uri: String, duration_ms: u64) {
+        if !ours || uri.is_empty() {
+            return;
+        }
+        match &self.so_expect {
+            Some(want) if *want == uri => {
+                if !self.so_seen {
+                    self.so_seen = true;
+                    self.so_deadline = None;
+                    if let Some(so) = &self.soloist {
+                        if self.so_start_ms > 0 {
+                            so.send(super::soloist::Command::Seek(self.so_start_ms));
+                        }
+                        if self.so_start_paused {
+                            so.send(super::soloist::Command::Pause);
+                        }
+                    }
+                    if duration_ms > 0 {
+                        self.clock.duration_ms.store(duration_ms, Ordering::Relaxed);
+                    }
+                    self.publish(|s| s.error = None);
+                }
+            }
+            // Soloist moved to a different track after ours played: ours has ended
+            // (or someone skipped in the Spotify app) — continue with our queue.
+            Some(_) if self.so_seen => self.soloist_track_ended(),
+            _ => {}
+        }
+    }
+
+    fn soloist_status(&mut self, ours: bool, st: super::soloist::Status) {
+        use super::soloist::Status;
+        self.so_status = st;
+        if !ours || !self.so_seen {
+            return;
+        }
+        let dur = self.q.current().map(|t| t.duration_ms).unwrap_or(0).max(self.clock.duration_ms.load(Ordering::Relaxed));
+        let near_end = dur > 0 && self.clock.external_position() + 2500 >= dur;
+        match st {
+            Status::Playing => {
+                if !self.playing {
+                    self.playing = true;
+                    self.publish(|_| {});
+                }
+            }
+            Status::Idle => self.soloist_track_ended(),
+            Status::Paused if near_end => self.soloist_track_ended(),
+            Status::Paused => {
+                // paused from the Spotify app / media keys
+                if self.playing {
+                    self.playing = false;
+                    self.publish(|_| {});
+                }
+            }
+            Status::Buffering => {}
+        }
+    }
+
     fn position(&self) -> u64 {
+        if self.clock.external.load(Ordering::Relaxed) {
+            return self.clock.external_position();
+        }
         let rate = self.out.rate().max(1) as u64;
         let consumed = self.out.s.consumed.load(Ordering::Relaxed);
         self.clock.base_ms.load(Ordering::Relaxed) + consumed.saturating_sub(self.clock.track_start_frame.load(Ordering::Relaxed)) * 1000 / rate
@@ -883,6 +1193,14 @@ impl Worker {
         self.pending.clear();
         match self.active {
             Active::Local(_) => self.start_current(ms, self.playing),
+            Active::Soloist => {
+                if let Some(so) = &self.soloist {
+                    so.send(super::soloist::Command::Seek(ms));
+                }
+                let speed = if self.playing { 1.0 } else { 0.0 };
+                self.clock.set_external(super::soloist::PosAnchor { position_ms: ms, timestamp_ms: aqua_core::storage::now_millis(), speed });
+                self.publish(|_| {});
+            }
             #[cfg(feature = "spotify-playback")]
             Active::Spotify if self.feeding != self.q.pos => self.start_current(ms, self.playing),
             #[cfg(feature = "spotify-playback")]

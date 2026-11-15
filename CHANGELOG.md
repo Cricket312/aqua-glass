@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.7.0 — 2026-11-15 (Spotify playback through Spotify Soloist)
+
+### Why
+Spotify refuses librespot's audio-decryption keys for many accounts (`error audio key 0 1`,
+librespot issue #1649, unresolved). Songs then load, can't be decrypted and skip instantly.
+This can't be fixed in Aqua Glass.
+
+### Added
+- **Spotify Soloist backend** (default): Spotify's official headless player, used through
+  its documented local WebSocket API.
+  - Aqua Glass keeps its own queue, so manual picks still play before radio picks and
+    Similarity Radio's 15 / refill-at-5 behaviour is unchanged.
+  - Play, pause, resume, seek and volume go to Soloist.
+  - Track changes, play state and position come back from Soloist's events. When Soloist
+    moves on (end of song, autoplay, a skip in the Spotify app), Aqua Glass continues with
+    its own next song.
+- **Process management:**
+  - starts Soloist hidden, with `--ws 127.0.0.1:0`, a private data folder and a 500 MB
+    cache cap, and reads the port from `ws.port`;
+  - refuses non-loopback endpoints;
+  - ties Soloist to a Windows job object so it stops with Aqua Glass, even after a crash;
+  - reports exit code 10 as an expired build;
+  - optionally attaches to a Soloist you run yourself.
+- **Settings › Music Services › Spotify playback:**
+  - backend choice and a setup guide with links to Spotify's downloads and API key pages;
+  - soloist.exe picker and the build's expiry, read from `--version` (warns at 14 days);
+  - API key stored in Windows Credential Manager;
+  - device name, data folder and restart button;
+  - security notes.
+- Performance page: Soloist's memory and the Aqua Glass + Soloist total versus the target.
+- Tests:
+  - the integration runs against the **real** Soloist binary (process start, endpoint
+    discovery, auth_state, "requires authentication" error, loopback bind, shutdown);
+  - the engine runs against a protocol-accurate fake Soloist (queue order with manual and
+    radio picks, end-of-track detection, pause vs. end, controls, unpaired state).
+
+### Changed
+- librespot is now optional (Settings › Music Services). When Spotify refuses its audio
+  key, playback stops at once with an explanation instead of skipping through the queue.
+- Skip errors stay visible after the next song starts.
+
 ## 0.6.2 — 2026-11-15
 
 ### Fixed

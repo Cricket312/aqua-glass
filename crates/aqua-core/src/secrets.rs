@@ -20,6 +20,8 @@ pub mod keys {
     /// Legacy, see above.
     pub const YOUTUBE_CLIENT_SECRET: &str = "youtube.client_secret";
     pub const LASTFM_API_KEY: &str = "lastfm.api_key";
+    /// Spotify Soloist API key (from the Spotify for Developers dashboard).
+    pub const SOLOIST_API_KEY: &str = "soloist.api_key";
 }
 
 /// Where secrets are stored on this platform.

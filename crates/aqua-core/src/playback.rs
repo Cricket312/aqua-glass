@@ -40,6 +40,8 @@ pub struct PlayerState {
     pub spotify: SpotifyStatus,
     /// Parallel to `queue`: why each entry is queued (context / manual / radio).
     pub queue_origin: Vec<EntryOrigin>,
+    /// Process id of a separate playback helper (Spotify Soloist), for memory accounting.
+    pub helper_pid: Option<u32>,
     /// Radio recommendations still to play.
     pub radio_upcoming: usize,
     /// The most recently finished/left track (for history, skips and radio learning).

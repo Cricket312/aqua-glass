@@ -219,7 +219,7 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
 name = "aqua-core"
-version = "0.6.2"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "log",
@@ -230,7 +230,7 @@ dependencies = [
 
 [[package]]
 name = "aqua-glass"
-version = "0.6.2"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "aqua-core",
@@ -268,6 +268,7 @@ dependencies = [
  "tokio",
  "toml 0.9.12+spec-1.1.0",
  "tray-icon",
+ "tungstenite",
  "url",
  "windows 0.62.2",
  "winreg",
@@ -275,7 +276,7 @@ dependencies = [
 
 [[package]]
 name = "aqua-providers"
-version = "0.6.2"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "aqua-core",
@@ -292,7 +293,7 @@ dependencies = [
 
 [[package]]
 name = "aqua-radio"
-version = "0.6.2"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "aqua-core",

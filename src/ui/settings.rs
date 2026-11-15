@@ -22,6 +22,9 @@ pub struct SettingsUi {
     pub selftest_artist: String,
     pub selftest_title: String,
     pub selftest_result: std::sync::Arc<std::sync::Mutex<Option<(String, std::path::PathBuf)>>>,
+    pub soloist_key_input: String,
+    /// `soloist --version` result for a path (run once per path, not every frame).
+    pub soloist_version: Option<(String, Result<(String, i64), String>)>,
 }
 
 impl Default for Category {
@@ -943,6 +946,119 @@ fn mini(app: &mut AquaApp, ui: &mut Ui) {
     }
 }
 
+const SOLOIST_DOWNLOADS: &str = "https://developer.spotify.com/documentation/soloist/reference/downloads-and-updates";
+const SOLOIST_KEY_PAGE: &str = "https://developer.spotify.com/dashboard/soloist";
+
+/// "Spotify playback" card: backend choice and Spotify Soloist setup. Returns "dirty".
+fn spotify_playback_settings(app: &mut AquaApp, ui: &mut Ui) -> bool {
+    use crate::config::SpotifyBackend;
+    let mut d = false;
+    ui.add_space(6.0);
+    ui.label(RichText::new("Spotify playback").strong());
+    ui.horizontal(|ui| {
+        for b in [SpotifyBackend::Soloist, SpotifyBackend::Librespot] {
+            if ui.selectable_label(app.cfg.services.spotify_backend == b, b.label()).clicked() {
+                app.cfg.services.spotify_backend = b;
+                d = true;
+            }
+        }
+    });
+    if app.cfg.services.spotify_backend == SpotifyBackend::Librespot {
+        widgets::note(ui, "librespot is an unofficial open-source player built into Aqua Glass. Since late 2025 Spotify refuses its audio-decryption keys for many accounts (songs then skip without playing); if that happens, switch to Spotify Soloist. Spotify's terms restrict third-party clients — use at your own discretion.");
+        return d;
+    }
+    widgets::note(ui, "Spotify Soloist is Spotify's official headless player. It runs as a separate background program (no window) and plays the audio; Aqua Glass stays your only music interface and keeps its queue, Similarity Radio and controls. EQ, visualizer and normalization don't apply to Soloist's audio. Aqua Glass never bundles or redistributes Soloist.");
+    egui::CollapsingHeader::new(RichText::new("Set up Spotify Soloist (one time, about 5 minutes)").strong())
+        .default_open(app.cfg.services.soloist_path.trim().is_empty() || crate::security::get(crate::security::keys::SOLOIST_API_KEY).is_none())
+        .show(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.label("1. Download the Windows x86_64 build from Spotify and extract the ZIP (e.g. to C:\\Tools\\Soloist).");
+                if ui.small_button("Open downloads page").clicked() {
+                    let _ = open::that_detached(SOLOIST_DOWNLOADS);
+                }
+            });
+            ui.horizontal_wrapped(|ui| {
+                ui.label("2. Generate your Soloist API key (needs Spotify Premium; it's for you only — never share it).");
+                if ui.small_button("Open API key page").clicked() {
+                    let _ = open::that_detached(SOLOIST_KEY_PAGE);
+                }
+            });
+            ui.label("3. Choose soloist.exe and store the key below. Aqua Glass starts Soloist in the background.");
+            ui.label("4. Pair once: open Spotify on your phone or PC (same network), tap the devices icon and choose the device name below. Soloist remembers it.");
+            widgets::note(ui, "Soloist builds stop working 90 days after their build date. Aqua Glass shows the days left here and warns two weeks ahead; to update, download the new ZIP and replace soloist.exe (keep the same folder setting so it stays paired).");
+        });
+    // soloist.exe
+    ui.horizontal(|ui| {
+        ui.label("soloist.exe");
+        d |= ui.add(egui::TextEdit::singleline(&mut app.cfg.services.soloist_path).hint_text("C:\\Tools\\Soloist\\soloist.exe").desired_width(320.0)).changed();
+        if ui.button("Browse…").clicked() {
+            if let Some(p) = super::pages::pick_open(&["exe"]) {
+                app.cfg.services.soloist_path = p.to_string_lossy().to_string();
+                d = true;
+            }
+        }
+    });
+    let path = app.cfg.services.soloist_path.trim().to_string();
+    if !path.is_empty() {
+        if app.settings.soloist_version.as_ref().map(|(p, _)| p != &path).unwrap_or(true) {
+            let r = crate::audio::soloist::version(std::path::Path::new(&path));
+            app.settings.soloist_version = Some((path.clone(), r));
+        }
+        match &app.settings.soloist_version.as_ref().unwrap().1 {
+            Ok((v, built)) => {
+                let left = crate::audio::soloist::days_left(*built, crate::util::now_unix());
+                let ver = v.split_whitespace().nth(1).unwrap_or("").to_string();
+                if left < 0 {
+                    widgets::warn(ui, &format!("Soloist {ver} has expired. Download the current build and replace soloist.exe."));
+                } else if left <= 14 {
+                    widgets::warn(ui, &format!("Soloist {ver} expires in {left} day(s) — download the current build soon and replace soloist.exe."));
+                } else {
+                    widgets::ok(ui, &format!("Soloist {ver} · expires in {left} days"));
+                }
+            }
+            Err(e) => widgets::warn(ui, &format!("Can't use this file: {e}")),
+        }
+    }
+    // API key (Credential Manager)
+    ui.horizontal(|ui| {
+        ui.label("API key");
+        let have = crate::security::get(crate::security::keys::SOLOIST_API_KEY).is_some();
+        ui.add(egui::TextEdit::singleline(&mut app.settings.soloist_key_input).password(true).hint_text(if have { "stored in Credential Manager" } else { "paste your Soloist API key" }).desired_width(260.0));
+        if ui.add_enabled(!app.settings.soloist_key_input.trim().is_empty(), egui::Button::new("Save securely")).clicked() {
+            match crate::security::set(crate::security::keys::SOLOIST_API_KEY, app.settings.soloist_key_input.trim()) {
+                Ok(()) => app.toast("Soloist API key stored in Windows Credential Manager.", false),
+                Err(e) => app.toast(format!("Could not store the key: {e}"), true),
+            }
+            app.settings.soloist_key_input.clear();
+            app.ensure_soloist(true);
+        }
+        if have && ui.small_button("Remove").clicked() {
+            crate::security::delete(crate::security::keys::SOLOIST_API_KEY);
+            app.ensure_soloist(true);
+        }
+    });
+    ui.horizontal(|ui| {
+        ui.label("Device name");
+        d |= ui.add(egui::TextEdit::singleline(&mut app.cfg.services.soloist_device_name).desired_width(180.0)).changed();
+        if ui.button("Restart Soloist").clicked() {
+            app.ensure_soloist(true);
+        }
+    });
+    d |= ui.checkbox(&mut app.cfg.services.soloist_manage, "Start and stop Soloist with Aqua Glass (off = use a Soloist you run yourself with --ws 127.0.0.1:0)").changed();
+    ui.horizontal(|ui| {
+        ui.label("Soloist data folder");
+        let hint = crate::util::data_dir().join("soloist").to_string_lossy().to_string();
+        d |= ui.add(egui::TextEdit::singleline(&mut app.cfg.services.soloist_data_dir).hint_text(hint).desired_width(320.0)).changed();
+    });
+    if let Some(pid) = app.state.helper_pid {
+        if let Some(b) = crate::perf::process_memory_bytes(pid) {
+            ui.label(RichText::new(format!("Soloist is running (process {pid}) · {:.0} MB", b as f64 / 1_048_576.0)).weak());
+        }
+    }
+    widgets::note(ui, "Security: Soloist's local control socket has no password, so Aqua Glass always binds it to 127.0.0.1 and refuses other addresses. Soloist only accepts its API key as a command-line argument, so other programs on this PC that can list processes could read it while Soloist runs. Soloist also announces itself on your local network so the Spotify app can find it for pairing.");
+    d
+}
+
 fn services(app: &mut AquaApp, ui: &mut Ui) {
     let mut d = false;
     // Spotify
@@ -951,11 +1067,15 @@ fn services(app: &mut AquaApp, ui: &mut Ui) {
     widgets::note(ui, "RAM: LOW when signed out. Disabled providers do no background activity.");
     if app.cfg.services.spotify_enabled {
         ui.label(format!("Status: {}", app.sp_status));
+        let backend_name = match app.cfg.services.spotify_backend {
+            crate::config::SpotifyBackend::Soloist => "Spotify Soloist",
+            crate::config::SpotifyBackend::Librespot => "librespot",
+        };
         match &app.state.spotify {
-            crate::audio::engine::SpotifyStatus::Ready => widgets::ok(ui, "Premium playback ready (librespot)"),
+            crate::audio::engine::SpotifyStatus::Ready => widgets::ok(ui, &format!("Premium playback ready ({backend_name})")),
             crate::audio::engine::SpotifyStatus::Unavailable(e) => widgets::warn(ui, &format!("Playback unavailable: {e}")),
             crate::audio::engine::SpotifyStatus::Connecting => {
-                ui.label("Connecting playback…");
+                ui.label(format!("Connecting playback ({backend_name})…"));
             }
             _ => {}
         }
@@ -978,7 +1098,8 @@ fn services(app: &mut AquaApp, ui: &mut Ui) {
         } else if rl.total_429 > 0 {
             widgets::note(ui, &format!("Spotify rate-limited this session {} time(s); Aqua Glass paused as requested each time.", rl.total_429));
         }
-        if app.spotify.is_signed_in() && !app.spotify.playback_signed_in() {
+        d |= spotify_playback_settings(app, ui);
+        if app.cfg.services.spotify_backend == crate::config::SpotifyBackend::Librespot && app.spotify.is_signed_in() && !app.spotify.playback_signed_in() {
             ui.horizontal(|ui| {
                 widgets::warn(ui, "Playback isn't signed in yet (needed once when using your own app).");
                 if ui.button("Sign in for playback").clicked() {
@@ -1022,7 +1143,7 @@ fn services(app: &mut AquaApp, ui: &mut Ui) {
                 }
                 widgets::note(ui, "Development-Mode apps allow up to 5 users — plenty for personal use. Nothing about your account changes; you can delete the app any time.");
             });
-        widgets::note(ui, "Playback requires Spotify Premium (enforced by Spotify). Library import, sync, export and transfer work with Free accounts. librespot is an unofficial, open-source client library; Spotify's terms restrict third-party clients — use at your own discretion.");
+        widgets::note(ui, "Playback requires Spotify Premium (enforced by Spotify). Library import, sync, export and transfer work with Free accounts.");
     }
 
     // Local
@@ -1204,6 +1325,19 @@ fn performance(app: &mut AquaApp, ui: &mut Ui) {
         }
         widgets::sparkline(ui, &app.monitor.history.iter().copied().collect::<Vec<_>>(), target, accent);
         widgets::note(ui, "Measured live from the operating system (private working set).");
+        if let Some(pid) = app.state.helper_pid {
+            if let Some((private, ws)) = crate::perf::process_memory(pid) {
+                let so = crate::perf::mb(private);
+                let total = cur + so;
+                ui.add_space(6.0);
+                let what = if private == ws { format!("{so:.0} MB working set (this system doesn't report private memory)") } else { format!("{so:.0} MB private · {:.0} MB working set", crate::perf::mb(ws)) };
+                ui.label(RichText::new(format!("Spotify Soloist (separate process): {what}")).strong());
+                ui.label(format!("Aqua Glass + Soloist: {total:.0} MB of the {target:.0} MB target"));
+                if total > target {
+                    widgets::warn(ui, "Together the two processes are above the target. The target applies to Aqua Glass itself; Soloist's memory is managed by Spotify's program.");
+                }
+            }
+        }
     });
     widgets::card(ui, Some("Caches and background work"), |ui| {
         let (art_n, art_b) = {
