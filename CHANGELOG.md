@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.4.1 — 2026-11-15 (crash diagnostics)
+
+### Fixed
+- With your own Spotify Client ID, the saved Spotify sign-in was not restored at startup:
+  the app only looked for the default-app sign-in.
+
+### Added
+- **Crash reports.** Release builds used to close silently on an internal error. Now the
+  error, where it happened and the thread are written to `crash.log` in the data folder,
+  and a message box shows them. Unhandled Windows exceptions (access violation, stack
+  overflow) are logged too. On the next start the app mentions the report once and keeps
+  it as `crash-last.log`.
+- `--safe-mode`: start without restoring the Spotify/YouTube sessions and the saved queue.
+- `--debug-log`: diagnostic logging to `aqua-glass.log` for this run, even when the
+  "Diagnostic Logging" setting can't be reached.
+- `--crash-test`: triggers a deliberate crash to check that reporting works.
+
 ## 0.4.0 — 2026-11-14 (architecture preparation for mobile and cross-device sync)
 
 No new user-facing features and no change in behaviour, except that a restored queue now

@@ -33,6 +33,7 @@ Other files in the data folder:
 | `session.json` | saved queue ("Restore Queue on Launch"); v2 keeps which entries were manual / radio picks |
 | `device.json` | random device id + name, created only by `--export-sync-snapshot` (future sync); no hardware or account data |
 | `sync-snapshot-*.json` | output of `--export-sync-snapshot` (no secrets, no local file paths) |
+| `crash.log` / `crash-last.log` | crash reports: error message, source location, thread; no tokens or settings |
 | `aqua-glass.log` | only when "Diagnostic Logging" is on |
 
 ## Feature toggles (`[features]`)

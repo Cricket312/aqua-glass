@@ -3,7 +3,7 @@ members = ["crates/aqua-core", "crates/aqua-providers", "crates/aqua-radio"]
 resolver = "2"
 
 [workspace.package]
-version = "0.4.0"
+version = "0.4.1"
 edition = "2021"
 rust-version = "1.85"
 license = "MIT"
@@ -81,7 +81,7 @@ rfd = "0.17.2"
 souvlaki = "0.8.3"
 tauri-winrt-notification = "0.8.1"
 tray-icon = "0.24.2"
-windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_ProcessStatus", "Win32_System_Threading", "Win32_Graphics_Dwm", "Win32_UI_WindowsAndMessaging", "Win32_System_SystemInformation", "Win32_System_Console"] }
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_ProcessStatus", "Win32_System_Threading", "Win32_Graphics_Dwm", "Win32_UI_WindowsAndMessaging", "Win32_System_SystemInformation", "Win32_System_Console", "Win32_System_Diagnostics_Debug", "Win32_System_Kernel"] }
 winreg = "0.56.0"
 
 [dev-dependencies]

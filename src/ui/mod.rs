@@ -204,7 +204,7 @@ pub enum Confirm {
 }
 
 impl AquaApp {
-    pub fn new(cc: &eframe::CreationContext<'_>, cfg: Config, cfg_warning: Option<String>, start_hidden: bool) -> AquaApp {
+    pub fn new(cc: &eframe::CreationContext<'_>, cfg: Config, cfg_warning: Option<String>, start_hidden: bool, safe_mode: bool) -> AquaApp {
         let ctx = cc.egui_ctx.clone();
         crate::services::install_crypto();
         let hwnd = window_handle(cc);
@@ -343,8 +343,18 @@ impl AquaApp {
         }
         app.engine.send(Cmd::SetRepeat(app.cfg.playback.repeat));
         app.engine.send(Cmd::SetShuffle(app.cfg.playback.shuffle));
-        app.restore_sessions();
-        app.restore_queue();
+        if safe_mode {
+            app.toast("Safe mode: Spotify/YouTube sessions and the saved queue were not restored. Sign in again from Settings › Music Services when ready.", false);
+        } else {
+            app.restore_sessions();
+            app.restore_queue();
+        }
+        if crate::crash::log_path().exists() {
+            // shown once; the report is kept as crash-last.log
+            let seen = crate::util::data_dir().join("crash-last.log");
+            let _ = std::fs::rename(crate::crash::log_path(), &seen);
+            app.toast(format!("Aqua Glass crashed last time. Details: {}", seen.display()), true);
+        }
         // first start with local folders configured: build the local library
         let needs_scan = app.cfg.services.local_enabled && !app.cfg.services.local_folders.is_empty() && app.library.lock().unwrap().lib(ProviderKind::Local).last_sync == 0;
         if needs_scan {
@@ -500,7 +510,10 @@ impl AquaApp {
     // Accounts
 
     fn restore_sessions(&mut self) {
-        if self.cfg.services.spotify_enabled && crate::security::get(crate::security::keys::SPOTIFY_REFRESH).is_some() {
+        // with your own Spotify app the Web API sign-in is stored under a separate key
+        let sp_key = if self.spotify.uses_default_client() { crate::security::keys::SPOTIFY_REFRESH } else { crate::security::keys::SPOTIFY_WEBAPI_REFRESH };
+        if self.cfg.services.spotify_enabled && crate::security::get(sp_key).is_some() {
+            log::info!("restoring Spotify session (custom app: {})", !self.spotify.uses_default_client());
             self.sp_status = "Restoring session…".into();
             let api = self.spotify.clone();
             self.jobs.spawn("Spotify: restore session", move |h| {
@@ -1027,6 +1040,7 @@ impl AquaApp {
                         self.toast(format!("Spotify connected: {}{premium_note}", p.display_name), false);
                         self.sp_profile = Some(p);
                         let api = self.spotify.clone();
+                        log::info!("Spotify signed in (product: {}); playback session: {}", p_product_dbg(&self.sp_profile), self.spotify.playback_signed_in());
                         if self.spotify.playback_signed_in() {
                             self.engine.send(Cmd::SpotifyConnect(Arc::new(move || api.playback_token().map_err(|e| e.to_string()))));
                         } else {
@@ -1844,4 +1858,8 @@ mod tests {
         c.set("fades", true);
         assert_eq!(engine_opts(&c).fade_ms, c.playback.fade_ms);
     }
+}
+
+fn p_product_dbg(p: &Option<crate::services::spotify::Profile>) -> String {
+    p.as_ref().map(|p| p.product.clone()).unwrap_or_default()
 }
