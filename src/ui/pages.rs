@@ -92,7 +92,7 @@ pub fn track_list(app: &mut AquaApp, ui: &mut Ui, tracks: &[Track], id_salt: &st
                                 act = Some(RowAction::GoAlbum(t.clone()));
                                 ui.close();
                             }
-                            if t.provider != ProviderKind::Local && ui.button("Find on the other service…").clicked() {
+                            if t.provider == ProviderKind::Local && ui.button("Find on Spotify…").clicked() {
                                 act = Some(RowAction::Alternatives(t.clone()));
                                 ui.close();
                             }
@@ -127,7 +127,7 @@ pub fn handle_row_action(app: &mut AquaApp, tracks: &[Track], a: RowAction) {
         }
         RowAction::Like(t) => app.like(&t),
         RowAction::Open(t) => {
-            if let Some(u) = t.web_url(app.cfg.services.youtube_open_in) {
+            if let Some(u) = t.web_url() {
                 let _ = open::that_detached(u);
             }
         }
@@ -175,7 +175,7 @@ pub fn all_playlists(app: &mut AquaApp) -> Vec<Playlist> {
 
 pub fn library(app: &mut AquaApp, ui: &mut Ui) {
     widgets::heading(ui, "Library");
-    for p in [ProviderKind::Spotify, ProviderKind::YouTube, ProviderKind::Local] {
+    for p in [ProviderKind::Spotify, ProviderKind::Local] {
         if !app.filter.allows(p) || !app.provider_enabled(p) {
             continue;
         }
@@ -334,7 +334,7 @@ pub fn albums_page(app: &mut AquaApp, ui: &mut Ui) {
         s.libs.values().flat_map(|l| l.albums.iter().cloned()).filter(|a| app.filter.allows(a.provider)).collect()
     };
     if albums.is_empty() {
-        widgets::note(ui, "No saved albums imported yet. YouTube's API has no album objects; local albums come from file tags.");
+        widgets::note(ui, "No saved albums imported yet. Local albums come from file tags.");
     }
     let mut open = None;
     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
@@ -552,7 +552,7 @@ pub fn artist_view(app: &mut AquaApp, ui: &mut Ui, a: &Artist) {
     back_button(app, ui);
     playlist_header(app, ui, &a.artwork_url, &a.name, &a.genres.join(", "), "", a.provider);
     if a.provider != ProviderKind::Spotify {
-        widgets::note(ui, "Artist pages are available for Spotify artists. YouTube's Data API exposes channels, not artist discographies.");
+        widgets::note(ui, "Artist pages are available for Spotify artists.");
         return;
     }
     let albums = app.view.artist_albums.get(&a.id).cloned();
@@ -591,10 +591,6 @@ pub fn artist_view(app: &mut AquaApp, ui: &mut Ui, a: &Artist) {
 
 pub fn visualizer(app: &mut AquaApp, ui: &mut Ui) {
     if !app.cfg.active("visualizer") {
-        return;
-    }
-    if app.state.external {
-        widgets::note(ui, "The visualizer reacts to audio played inside Aqua Glass (Spotify, local files).");
         return;
     }
     let v = app.cfg.visualizer.clone();

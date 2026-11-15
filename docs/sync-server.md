@@ -21,8 +21,8 @@ This is a design for an **optional, self-hosted** server that would sync Aqua Gl
 
 **Non-goals**
 - Storing or streaming audio.
-- Storing Spotify/YouTube/Last.fm credentials. Each device signs in to those services itself.
-- Talking to Spotify or YouTube on the user's behalf, or writing provider-owned data.
+- Storing Spotify/Last.fm credentials. Each device signs in to those services itself.
+- Talking to Spotify on the user's behalf, or writing provider-owned data.
 - Public multi-tenant hosting. Several users on one server is supported, but the design assumes you trust your own server.
 
 ## Architecture

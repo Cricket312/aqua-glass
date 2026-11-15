@@ -211,7 +211,6 @@ fn app_menu(app: &mut AquaApp, ui: &mut Ui) {
         }
         if ui.button("Sync library now").clicked() {
             app.sync_now(ProviderKind::Spotify, false);
-            app.sync_now(ProviderKind::YouTube, false);
             ui.close();
         }
         ui.separator();
@@ -325,7 +324,7 @@ fn filter_menu(app: &mut AquaApp, ui: &mut Ui) {
         ui.label(RichText::new("Search and browse").strong());
         let mut f = app.filter;
         ui.radio_value(&mut f, Filter::All, "All services");
-        for p in [ProviderKind::Spotify, ProviderKind::YouTube, ProviderKind::Local] {
+        for p in [ProviderKind::Spotify, ProviderKind::Local] {
             if app.provider_enabled(p) {
                 ui.radio_value(&mut f, Filter::Only(p), p.label());
             }
@@ -345,9 +344,6 @@ fn filter_menu(app: &mut AquaApp, ui: &mut Ui) {
                 _ => format!("Spotify — {}", app.sp_status),
             };
             ui.label(RichText::new(s).size(12.0));
-        }
-        if app.cfg.services.youtube_enabled {
-            ui.label(RichText::new(format!("YouTube Music — {}", app.yt_status)).size(12.0));
         }
         if ui.button("Music services settings…").clicked() {
             app.settings.category = crate::features::Category::Services;
@@ -450,15 +446,13 @@ fn player_bar(app: &mut AquaApp, ui: &mut Ui) {
                 ui.label(RichText::new(fmt_ms(pos)).size(11.5).color(v.weak_text_color()));
                 let mut p = pos as f32;
                 ui.spacing_mut().slider_width = (ui.available_width() - 48.0).max(60.0);
-                let r = ui.add_enabled(dur > 0 && !st.external, egui::Slider::new(&mut p, 0.0..=(dur.max(1) as f32)).show_value(false).trailing_fill(true));
+                let r = ui.add_enabled(dur > 0, egui::Slider::new(&mut p, 0.0..=(dur.max(1) as f32)).show_value(false).trailing_fill(true));
                 if r.drag_stopped() || (r.clicked() && !r.dragged()) {
                     app.engine.send(Cmd::Seek(p as u64));
                 }
                 ui.label(RichText::new(fmt_ms(dur)).size(11.5).color(v.weak_text_color()));
             });
-            if st.external {
-                ui.label(RichText::new("Playing in YouTube Music in your browser").size(10.5).color(v.weak_text_color()));
-            } else if let Some(e) = &st.error {
+            if let Some(e) = &st.error {
                 ui.add(egui::Label::new(RichText::new(e).size(10.5).color(Color32::from_rgb(248, 113, 113))).truncate());
             }
         });

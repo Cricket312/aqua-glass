@@ -289,9 +289,9 @@ pub static FEATURES: &[FeatureDef] = &[
     f!("discord_artist", "Show Artist", Discord, Low, (0.0, 0.0), ["discord"], false, [true, true, true, true], "Include the artist.", ""),
     f!("discord_album", "Show Album", Discord, Low, (0.0, 0.0), ["discord"], false, [false, true, true, true], "Include the album name.", ""),
     f!("discord_artwork", "Show Album Artwork", Discord, Low, (0.0, 0.0), ["discord"], false, [false, true, true, true],
-        "Send the public artwork URL (Spotify/YouTube CDN) so Discord can display it. Local files never send artwork.", "image"),
+        "Send the public artwork URL (Spotify CDN) so Discord can display it. Local files never send artwork.", "image"),
     f!("discord_elapsed", "Show Elapsed Time", Discord, Low, (0.0, 0.0), ["discord"], false, [true, true, true, true], "Show a running timer.", ""),
-    f!("discord_service", "Show Service Name", Discord, Low, (0.0, 0.0), ["discord"], false, [true, true, true, true], "Show 'on Spotify' / 'on YouTube Music'.", ""),
+    f!("discord_service", "Show Service Name", Discord, Low, (0.0, 0.0), ["discord"], false, [true, true, true, true], "Show 'on Spotify'.", ""),
     f!("discord_status", "Show Paused State", Discord, Low, (0.0, 0.0), ["discord"], false, [true, true, true, true], "Keep the status while paused, marked as paused. Off = clear status when paused.", ""),
     f!("discord_privacy", "Privacy Mode", Discord, Low, (0.0, 0.0), ["discord"], false, [false, false, false, false], "Only show 'Listening to music' with no track details.", "private hide"),
     // ---------------- Mini-player / overlay ----------------
@@ -324,7 +324,7 @@ pub static FEATURES: &[FeatureDef] = &[
     f!("quick_settings", "Quick-Settings Button", General, Low, (0.0, 0.2), [], false, [false, true, true, true], "A button in the player bar with the most used toggles.", "quick"),
     // ---------------- Services / library ----------------
     f!("auto_sync", "Automatic Library Sync", Library, Low, (0.5, 3.0), [], false, [false, true, true, true],
-        "Periodically refresh imported Spotify/YouTube library metadata. Uses snapshot ids to skip unchanged playlists.", "synchronization refresh"),
+        "Periodically refresh imported Spotify library metadata. Uses snapshot ids to skip unchanged playlists.", "synchronization refresh"),
     f!("metadata_cache", "Persistent Metadata Cache", Library, Moderate, (2.0, 15.0), [], false, [true, true, true, true],
         "Keep imported library metadata in memory and on disk for instant browsing (size scales with library size).", "cache offline"),
     f!("artwork_disk_cache", "Artwork Disk Cache", Library, Low, (0.0, 1.0), [], false, [true, true, true, true],

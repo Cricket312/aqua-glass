@@ -252,9 +252,9 @@ fn handoff_plans() {
     assert_eq!(p.action, HandoffAction::Resume { track: listening.track.clone().unwrap(), position_ms: 70_000 });
     assert!(p.pause_source);
 
-    // phone only has YouTube: match instead of pretending
-    let caps = Capabilities { playable: vec![ProviderKind::YouTube], ..Default::default() };
-    assert!(matches!(plan_handoff(&offer, &caps, 1_010_000).action, HandoffAction::ResumeMatched { ref search, .. } if search == &vec![ProviderKind::YouTube]));
+    // phone only has local files: match instead of pretending
+    let caps = Capabilities { local_library: true, ..Default::default() };
+    assert!(matches!(plan_handoff(&offer, &caps, 1_010_000).action, HandoffAction::ResumeMatched { ref search, .. } if search == &vec![ProviderKind::Local]));
 
     // nothing usable
     assert!(matches!(plan_handoff(&offer, &Capabilities::default(), 1_010_000).action, HandoffAction::Unavailable { .. }));
@@ -266,13 +266,10 @@ fn handoff_plans() {
     paused.listening.playing = false;
     assert!(matches!(plan_handoff(&paused, &Capabilities { playable: vec![ProviderKind::Spotify], ..Default::default() }, 1_100_000).action, HandoffAction::Resume { position_ms: 60_000, .. }));
 
-    // YouTube on a device that can only open it externally
+    // a legacy YouTube track (pre-0.6 data) is matched on a provider this device has
     let yt = crate::playback::PlayerState { current: Some(tr(ProviderKind::YouTube, "vid", "Clip")), playing: true, duration_ms: 300_000, ..Default::default() };
     let offer = HandoffOffer { from: pc, listening: ListeningState::from_player(&yt, 95_000, c.tick(2_000_000)), queue: None };
-    match plan_handoff(&offer, &Capabilities { external: vec![ProviderKind::YouTube], ..Default::default() }, 2_000_000).action {
-        HandoffAction::OpenExternal { url, .. } => assert!(url.ends_with("v=vid&t=95s"), "{url}"),
-        a => panic!("{a:?}"),
-    }
+    assert!(matches!(plan_handoff(&offer, &Capabilities { playable: vec![ProviderKind::Spotify], ..Default::default() }, 2_000_000).action, HandoffAction::ResumeMatched { position_ms: 95_000, .. }));
     // nothing playing
     let mut empty = offer.clone();
     empty.listening.track = None;

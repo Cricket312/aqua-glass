@@ -17,7 +17,7 @@
 //!   converge to the same result regardless of the order updates arrive in.
 //! * **No secrets**: no payload type has a field for tokens, passwords or API
 //!   keys. Music-service credentials stay in each device's secret store.
-//! * **Local vs provider data**: Spotify/YouTube-owned data is only
+//! * **Local vs provider data**: Spotify-owned data is only
 //!   *referenced* (ids, snapshots); sync never writes back to a provider.
 
 pub mod clock;

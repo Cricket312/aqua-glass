@@ -54,7 +54,7 @@ pub fn provider_color(p: ProviderKind) -> Color32 {
     }
 }
 
-/// Small coloured provider tag ("SP", "YT", "LO").
+/// Small coloured provider tag ("SP", "LO"; "YT" only for pre-0.6 data).
 pub fn provider_badge(ui: &mut Ui, p: ProviderKind) -> egui::Response {
     let c = provider_color(p);
     let r = egui::Frame::new()

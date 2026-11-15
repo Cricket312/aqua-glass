@@ -15,7 +15,7 @@ pub fn install_url_opener(f: impl Fn(&str) -> Result<(), String> + Send + Sync +
     OPENER.set(Box::new(f)).is_ok()
 }
 
-/// Open `url` in the browser (OAuth sign-in, "Open in YouTube Music", ...).
+/// Open `url` in the browser (OAuth sign-in, "Open in Spotify", ...).
 pub fn open_url(url: &str) -> Result<(), String> {
     match OPENER.get() {
         Some(f) => f(url),

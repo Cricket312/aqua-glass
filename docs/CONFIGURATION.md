@@ -10,8 +10,7 @@ but it is plain TOML and safe to edit while Aqua Glass is closed.
 * **Invalid files:** unparsable files are copied to `settings.toml.bad` and defaults are used
   (you get a notification). Out-of-range values are clamped; unknown feature ids are dropped;
   missing keys get defaults.
-* **Secrets are never stored here.** Spotify/YouTube refresh tokens and the Google client
-  secret and the Last.fm API key are in Windows Credential Manager under `AquaGlass`. Exported settings are
+* **Secrets are never stored here.** Spotify refresh tokens and the Last.fm API key are in Windows Credential Manager under `AquaGlass`. Exported settings are
   therefore safe to share.
 
 Other files in the data folder:
@@ -31,6 +30,7 @@ Other files in the data folder:
 | `exports/` | default location for exported playlists/settings/themes |
 | `cache/artwork/` | downscaled cover JPEGs ("Artwork Disk Cache") |
 | `session.json` | saved queue ("Restore Queue on Launch"); v2 keeps which entries were manual / radio picks |
+| `youtube-removed` | marker: the one-time removal of YouTube Music data (0.6) has run |
 | `device.json` | random device id + name, created only by `--export-sync-snapshot` (future sync); no hardware or account data |
 | `sync-snapshot-*.json` | output of `--export-sync-snapshot` (no secrets, no local file paths) |
 | `crash.log` / `crash-last.log` | crash reports: error message, source location, thread; no tokens or settings |
@@ -192,7 +192,7 @@ preset applies.
 | Section | Keys |
 |---|---|
 | `[general]` | `last_settings_category`, `window_pos`, `window_size`, `ui_scale` (0.6–2.5), `sidebar_width`, `sidebar_collapsed`, `right_panel` (`Closed`/`Queue`/`Radio`/`Lyrics`/`Info`) |
-| `[radio]` | `strength` (`Familiar`/`Balanced`/`Adventurous`/`DeepDiscovery`), `target` (5–50, default 15), `threshold` (default 5), `provider` (`Automatic`/`Spotify`/`Local`/`YouTube`) |
+| `[radio]` | `strength` (`Familiar`/`Balanced`/`Adventurous`/`DeepDiscovery`), `target` (5–50, default 15), `threshold` (default 5), `provider` (`Automatic`/`Spotify`/`Local`; a pre-0.6 `YouTube` value loads as `Automatic`) |
 | `[appearance]` | `theme` (name), `font_path`, `player_bar_layout` (`Classic`/`Centered`/`Compact`), `player_bar_height` |
 | `[background]` | `image_path`, `blur_radius` (0–80), `dim` (0–1), `opacity` (0–1), `anim_speed`, `anim_fps` (5–60), `transition_ms`, `scale` (`Fill`/`Fit`/`Stretch`/`Center`), `parallax_px` |
 | `[playback]` | `preferred_provider`, `ask_when_both`, `volume`, `muted`, `shuffle`, `repeat` (`Off`/`All`/`One`), `quality` (`Low96`/`Normal160`/`High320`), `fade_ms`, `seek_step_s`, `volume_step` |
@@ -201,7 +201,7 @@ preset applies.
 | `[visualizer]` | `mode` (`Bars`/`Waveform`/`Circular`/`Minimal`), `fps`, `sensitivity`, `smoothing`, `bars`, `height`, `color_a`, `color_b` |
 | `[mini]` | `pos`, `size`, `opacity`, `layout` (`Horizontal`/`Square`/`Compact`) |
 | `[overlay]` | `pos`, `size`, `opacity`, `font_size`, `always_on_top` |
-| `[services]` | `spotify_enabled`, `youtube_enabled`, `local_enabled`, `spotify_client_id` (empty = librespot default), `spotify_redirect_port`, `youtube_client_id`, `local_folders`, `youtube_open_in` (`YouTubeMusic`/`YouTube`), `discord_app_id` |
+| `[services]` | `spotify_enabled`, `local_enabled`, `spotify_client_id` (empty = librespot default), `spotify_redirect_port`, `local_folders`, `discord_app_id`. YouTube keys from before 0.6 are ignored |
 | `[sync]` | `interval_min` (5–1440), `include_followed_playlists` |
 | `[perf]` | `ram_target_mb` (default 200), `artwork_max_px`, `artwork_cache_mb`, `idle_fps_cap` |
 | `[shortcuts]` | action id → binding, e.g. `play_pause = "Ctrl+Alt+P"` |
@@ -441,13 +441,10 @@ always_on_top = true
 
 [services]
 spotify_enabled = true
-youtube_enabled = true
 local_enabled = true
 spotify_client_id = ""
 spotify_redirect_port = 8898
-youtube_client_id = ""
 local_folders = []
-youtube_open_in = "YouTubeMusic"
 discord_app_id = ""
 
 [sync]

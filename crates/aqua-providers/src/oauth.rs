@@ -15,7 +15,7 @@ pub struct OAuthSpec {
     pub auth_url: String,
     pub token_url: String,
     pub client_id: String,
-    /// Only for providers that require it for installed apps (Google). Not confidential.
+    /// Only for providers that require one for installed apps (Spotify doesn't). Not confidential.
     pub client_secret: Option<String>,
     pub scopes: Vec<String>,
     /// Port 0 = pick a free port.

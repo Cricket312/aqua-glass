@@ -4,7 +4,7 @@
 use crate::config::ProviderKind;
 use crate::library::{self, LibraryStore, PlaylistEntry, SyncReport, LIKED_ID};
 use crate::model::*;
-use crate::services::{lyrics::Lyrics, spotify, youtube, ApiError};
+use crate::services::{lyrics::Lyrics, spotify, ApiError};
 use crate::transfer::{Plan, TransferLog};
 use eframe::egui;
 use std::collections::BTreeMap;
@@ -14,7 +14,6 @@ use std::time::Instant;
 
 pub enum Msg {
     SpotifyAuth(Result<Option<spotify::Profile>, String>),
-    YouTubeAuth(Result<Option<youtube::Channel>, String>),
     Search { gen: u64, provider: ProviderKind, res: Result<SearchResults, String> },
     PlaylistTracks { provider: ProviderKind, id: String, res: Result<Vec<Track>, String> },
     AlbumTracks { album: Album, res: Result<Vec<Track>, String> },
@@ -229,64 +228,3 @@ pub fn sync_spotify(api: &spotify::SpotifyApi, store: &Arc<Mutex<LibraryStore>>,
     Ok(rep)
 }
 
-pub fn sync_youtube(api: &youtube::YouTubeApi, store: &Arc<Mutex<LibraryStore>>, import_all: bool, h: &JobHandle) -> Result<SyncReport, String> {
-    let _bg = crate::services::ratelimit::background();
-    let ch = api.channel().map_err(e2s)?;
-    let lists = api.playlists().map_err(e2s)?;
-    let import_liked = {
-        let mut s = store.lock().unwrap();
-        let l = s.lib(ProviderKind::YouTube);
-        l.account = ch.title.clone();
-        l.user_id = ch.id.clone();
-        l.import_liked
-    };
-    let (mut rep, refetch) = {
-        let mut s = store.lock().unwrap();
-        let r = library::merge_listing(s.lib(ProviderKind::YouTube), lists, import_all);
-        s.save_index(ProviderKind::YouTube);
-        r
-    };
-    for (i, id) in refetch.iter().enumerate() {
-        h.progress(i, refetch.len() + 1);
-        let res = api.playlist_items(id);
-        let mut s = store.lock().unwrap();
-        match res {
-            Ok(t) => {
-                s.store_tracks(ProviderKind::YouTube, id, t);
-                if let Some(e) = s.lib(ProviderKind::YouTube).playlist_mut(id) {
-                    e.last_synced = crate::util::now_unix();
-                }
-            }
-            Err(e) => {
-                if let Some(p) = s.lib(ProviderKind::YouTube).playlist_mut(id) {
-                    p.meta.items_error = e.to_string();
-                    p.meta.snapshot.clear();
-                }
-                rep.errors.push(format!("{id}: {e}"));
-            }
-        }
-    }
-    if import_liked {
-        match api.liked() {
-            Ok(t) => {
-                let mut s = store.lock().unwrap();
-                let n = t.len() as u32;
-                let l = s.lib(ProviderKind::YouTube);
-                if l.playlist(LIKED_ID).is_none() {
-                    l.playlists.insert(0, PlaylistEntry { meta: Playlist { provider: ProviderKind::YouTube, id: LIKED_ID.into(), name: "Liked Music".into(), is_liked: true, owned_by_user: true, ..Default::default() }, imported: true, ..Default::default() });
-                }
-                if let Some(e) = l.playlist_mut(LIKED_ID) {
-                    e.meta.track_count = n;
-                }
-                s.store_tracks(ProviderKind::YouTube, LIKED_ID, t);
-            }
-            Err(e) => rep.errors.push(format!("Liked music: {e}")),
-        }
-    }
-    let mut s = store.lock().unwrap();
-    let l = s.lib(ProviderKind::YouTube);
-    l.last_sync = crate::util::now_unix();
-    l.last_error = rep.errors.first().cloned().unwrap_or_default();
-    s.save_index(ProviderKind::YouTube);
-    Ok(rep)
-}

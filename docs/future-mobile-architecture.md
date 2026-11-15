@@ -52,11 +52,11 @@ I split the code into only three crates. More would have meant more maintenance 
 | `sync` | Versioned sync and handoff models (see section 4). Data only. |
 | `secrets` | The `SecretStore` trait and an `install()` hook. Default: in memory. |
 | `storage` | Data directory chosen by the platform, `atomic_write`, clocks. |
-| `platform` | The `open_url` hook (OAuth, "open in YouTube Music") and `Platform::current()`. |
+| `platform` | The `open_url` hook (OAuth, "open in Spotify") and `Platform::current()`. |
 
 ### `aqua-providers` (adds: reqwest blocking + rustls/ring, url, sha2, base64)
 
-This crate holds the Spotify Web API (search, library, playlists, the 2026 response formats), the YouTube Data API v3, Last.fm, LRCLIB lyrics, OAuth PKCE and the shared rate limiter. It contains no Windows code.
+This crate holds the Spotify Web API (search, library, playlists, the 2026 response formats), Last.fm, LRCLIB lyrics, OAuth PKCE and the shared rate limiter. It contains no Windows code.
 
 - Secrets go through `aqua_core::secrets`.
 - The browser is opened through `aqua_core::platform::open_url`.
@@ -117,7 +117,7 @@ Kotlin (Jetpack Compose UI, MediaSessionService, WorkManager, Keystore)
    ▼
 aqua-mobile-ffi  (future crate: thin #[uniffi::export] facade)
    ├── aqua-core       models, queue, history, library, sync, handoff planner
-   ├── aqua-providers  Spotify Web API, YouTube Data API, Last.fm, lyrics
+   ├── aqua-providers  Spotify Web API, Last.fm, lyrics
    └── aqua-radio      Similarity Radio worker
 ```
 
@@ -143,7 +143,7 @@ The sync model is serde and JSON only; there is no transport. Section 6 describe
 | `ListeningState` | Device, track, position, duration, playing, `updated_ms`, stamp. `estimated_position_ms(now)` works out the current position. |
 | `QueueState` | Entries in play order, each with an `EntryOrigin` (Context/Manual/Radio). Also the current index, shuffle, repeat, and a `RadioSession` (current seed, original seed, `RadioPrefs`). Converts to and from `Queue` and `PlayerState`. The round trip is tested and keeps manual items before radio items. |
 | `LibraryState` | Playlists (`SyncPlaylist`), `favorites`, `saved_albums`, `saved_recommendations` (all `LwwMap`) and append-only `history` (unique event ids, capped at 2000). |
-| `SyncPlaylist` | A mergeable playlist with per-item ids, an LWW position for moves and an LWW presence flag for removals; name, description and deleted are LWW. `PlaylistOrigin::Local` playlists are editable; `PlaylistOrigin::Provider` playlists are read-only references to Spotify/YouTube data. |
+| `SyncPlaylist` | A mergeable playlist with per-item ids, an LWW position for moves and an LWW presence flag for removals; name, description and deleted are LWW. `PlaylistOrigin::Local` playlists are editable; `PlaylistOrigin::Provider` playlists are read-only references to Spotify data. |
 | `SettingsState` | Theme, `RadioPrefs`, `PlaybackPrefs` (preferred provider, fade, gapless, normalisation, seek step) and `SyncPrefs` (what to sync; theme sync is off by default). |
 | `HandoffOffer`, `Capabilities`, `plan_handoff` | See section 5. |
 | `Outbox`, `Change` | Pending local changes for offline-first upload. State-type changes coalesce. Acknowledged by sequence number. |
@@ -178,11 +178,10 @@ Desktop wiring that exists today:
 2. **The same provider is playable here** (signed in, Premium where needed): `Resume { track, position }`, with the position estimated from `updated_ms`.
    - If the offer is older than 6 hours, playback starts from 0:00.
    - Within 5 seconds of the end, the track restarts.
-3. **A YouTube track, and this device can only open YouTube externally:** `OpenExternal` with `https://music.youtube.com/watch?v=<id>&t=<s>s`.
-4. **Another provider can play here:** `ResumeMatched { search: [...] }`. The device matches by ISRC, then strict artist/title/duration. If there is no confident match, nothing plays; it never pretends.
-5. **Otherwise:** `Unavailable`, with a reason.
+3. **Another provider can play here** (including legacy YouTube tracks from pre-0.6 data): `ResumeMatched { search: [...] }`. The device matches by ISRC, then strict artist/title/duration. If there is no confident match, nothing plays; it never pretends.
+4. **Otherwise:** `Unavailable`, with a reason.
 
-`pause_source` asks the *source Aqua Glass app* to pause its own player. It is never a remote command to Spotify or YouTube.
+`pause_source` asks the *source Aqua Glass app* to pause its own player. It is never a remote command to Spotify.
 
 Limitations:
 
@@ -192,7 +191,7 @@ Limitations:
   - seek-to-position works through App Remote, but Aqua Glass's DSP/EQ won't apply.
 
   Whether shipping librespot on Android is acceptable is a policy decision to make before building, not a technical given.
-- **YouTube Music:** there is no third-party playback API on either platform. Handoff can only open YouTube Music with a start-time hint. Whether the app honours `t=` is up to Google.
+- **YouTube Music** support was removed in 0.6 (no third-party playback API). `ProviderKind::YouTube` remains only so older data still loads.
 - **Pausing the source device** needs both devices online and a delivery path: the sync server relays a `pause_request`. Aqua Glass doesn't use Spotify Connect device switching for this. Spotify's Web API "transfer playback" controls *Spotify's* devices, not Aqua Glass, and needs extra scopes and Premium.
 - **Local files** play on the phone only if a matching file exists there (matched by `artist|title`).
 - **The position is approximate:** network delay and the time the user takes to tap mean it is accurate to within a few seconds.
@@ -218,7 +217,7 @@ Limitations:
   - Windows Credential Manager today;
   - the Android Keystore later.
 
-  Each device signs in to Spotify/YouTube itself.
+  Each device signs in to Spotify itself.
 - **Device ids are random,** not derived from hardware or account. Local file paths are not sent.
 - **Future server authentication** is per device, can be revoked, and uses HTTPS only (details in docs/sync-server.md).
 - **Clock-skew guard:** a device whose clock runs far ahead could win every last-writer-wins merge. `Stamp::plausible()` rejects stamps more than 5 minutes in the future; receivers and the server apply the same check.
@@ -242,7 +241,7 @@ Conflict rules (all deterministic, tested in `sync/tests.rs`):
 | Two devices change the queue | Queues are per-device sessions and are never merged; each device's latest queue is kept. Handoff copies one queue whole. |
 | Reconnect after several days | History union (unique ids, chronological, capped); outbox replay is idempotent; clock observation keeps later edits ordered after what was seen. |
 | Conflicting settings | LWW per category (theme, radio, playback, sync prefs); each device decides which categories it accepts. |
-| Provider-owned data (Spotify playlists, Liked Songs) | Never edited through sync. The newest provider listing wins. Nothing is written back to Spotify or YouTube without an explicit user action in that device's UI. |
+| Provider-owned data (Spotify playlists, Liked Songs) | Never edited through sync. The newest provider listing wins. Nothing is written back to Spotify without an explicit user action in that device's UI. |
 
 ## 9. Recommended implementation order
 
@@ -254,7 +253,7 @@ Conflict rules (all deterministic, tested in `sync/tests.rs`):
    2. Keystore `SecretStore`;
    3. browsing, search, library, history (read-only first);
    4. `MediaSessionService` + `PlaybackControl` bridge;
-   5. Spotify App Remote / YouTube intents;
+   5. Spotify App Remote;
    6. Similarity Radio.
 5. **Handoff UI** on both platforms using `plan_handoff`; `pause_request` relay.
 6. Move `transfer.rs` and the library-sync jobs (`ui/jobs.rs`) into the portable crates when the phone needs them.
@@ -262,7 +261,7 @@ Conflict rules (all deterministic, tested in `sync/tests.rs`):
 ## 10. Remaining technical challenges
 
 - **Spotify playback on Android:** librespot vs the official SDK (section 5). This is a policy decision as well as a technical one.
-- **OAuth on mobile:** the redirect URI type and provider app registration (Spotify Development Mode limits; Google's verification for YouTube scopes).
+- **OAuth on mobile:** the redirect URI type and provider app registration (Spotify Development Mode limits).
 - **ring/rustls on Android:** builds with the NDK. CI needs `cargo-ndk`, and binary size should be checked.
 - **Blocking HTTP:** fine on worker threads. An async facade may suit Kotlin coroutines better later.
 - **Not yet portable:** `transfer.rs` and library sync (`ui/jobs.rs`) still sit in the desktop package; there is no fundamental reason, it's just not done yet.

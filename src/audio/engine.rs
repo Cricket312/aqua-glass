@@ -4,11 +4,9 @@
 //! Backends:
 //! * Spotify › librespot (Premium), via `audio::spotify`.
 //! * Local files › symphonia decoder, via `audio::local`.
-//! * YouTube › opened in YouTube Music / YouTube in the browser (no
-//!   third-party audio API exists; see `services::youtube`).
 
 use super::output::Output;
-use crate::config::{ProviderKind, Quality, RepeatMode, YtOpen};
+use crate::config::{ProviderKind, Quality, RepeatMode};
 pub use aqua_core::playback::{PlayRecord, PlayerState, PlaybackControl, SpotifyStatus};
 pub use aqua_core::queue::{EntryOrigin, Queue};
 use crate::model::Track;
@@ -26,12 +24,11 @@ pub struct EngineOpts {
     pub normalisation: bool,
     pub gapless: bool,
     pub fade_ms: u32,
-    pub yt_open: YtOpen,
 }
 
 impl Default for EngineOpts {
     fn default() -> Self {
-        EngineOpts { quality: Quality::Normal160, normalisation: false, gapless: true, fade_ms: 0, yt_open: YtOpen::YouTubeMusic }
+        EngineOpts { quality: Quality::Normal160, normalisation: false, gapless: true, fade_ms: 0 }
     }
 }
 
@@ -238,7 +235,6 @@ enum Active {
     None,
     Local(super::local::Decoding),
     Spotify,
-    External,
 }
 
 /// A track that has started feeding the output but is not yet audible (gapless).
@@ -318,7 +314,6 @@ impl Worker {
             s.shuffle = self.q.shuffle;
             s.repeat = self.q.repeat;
             s.playing = self.playing;
-            s.external = matches!(self.active, Active::External);
             s.duration_ms = s.current.as_ref().map(|t| t.duration_ms).unwrap_or(0);
             self.version += 1;
             s.version = self.version;
@@ -384,18 +379,9 @@ impl Worker {
             ProviderKind::Local => self.start_local(&track, start_ms),
             ProviderKind::Spotify => self.start_spotify(&track, start_ms as u32),
             ProviderKind::YouTube => {
-                self.active = Active::External;
+                // left over from a queue saved before 0.6 (YouTube Music support was removed)
                 self.playing = false;
-                if play {
-                    if let Some(u) = track.web_url(self.opts.yt_open) {
-                        if let Err(e) = open::that_detached(&u) {
-                            self.set_error(format!("Could not open browser: {e}"));
-                        }
-                    }
-                }
-                self.publish(|s| {
-                    s.message = Some("Playing in YouTube Music (browser). Google offers no third-party audio API, so playback controls there apply.".into())
-                });
+                self.set_error("YouTube Music is no longer supported — skip this song.");
                 return;
             }
         }
@@ -530,7 +516,7 @@ impl Worker {
         };
         let cur_provider = self.q.tracks.get(self.q.order[base]).map(|t| t.provider);
         let next = self.q.tracks[self.q.order[np]].clone();
-        let gapless_ok = self.opts.gapless && Some(next.provider) == cur_provider && next.provider != ProviderKind::YouTube;
+        let gapless_ok = self.opts.gapless && Some(next.provider) == cur_provider;
         if gapless_ok {
             // feed the next track right behind the current one
             self.feeding = Some(np);
@@ -701,9 +687,6 @@ impl Worker {
                 }
                 match self.active {
                     Active::None => self.start_current(0, true),
-                    Active::External => {
-                        self.start_current(0, true);
-                    }
                     _ => {
                         self.playing = true;
                         self.resume_backend();

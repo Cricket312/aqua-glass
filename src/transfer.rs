@@ -57,7 +57,7 @@ pub fn export_m3u(p: &Playlist, tracks: &[Track], path: &Path) -> anyhow::Result
         }
         let loc = match t.provider {
             ProviderKind::Local => t.id.clone(),
-            _ => t.web_url(crate::config::YtOpen::YouTubeMusic).unwrap_or_default(),
+            _ => t.web_url().unwrap_or_default(),
         };
         s.push_str(&loc);
         s.push('\n');
@@ -386,15 +386,16 @@ mod tests {
     #[test]
     fn plan_and_execute_with_fake_target() {
         std::env::set_var("AQUA_GLASS_HOME", std::env::temp_dir().join(format!("aqua-home-{}", std::process::id())));
-        let src = tracks();
+        // e.g. a playlist restored from a file: tracks that aren't on Spotify yet
+        let src: Vec<Track> = tracks().into_iter().map(|mut t| { t.provider = ProviderKind::Local; t }).collect();
         let search = |q: &str| -> Result<Vec<Track>, String> {
             if q.starts_with("one") {
-                Ok(vec![Track { provider: ProviderKind::YouTube, id: "yt1".into(), title: "One, Two".into(), artists: vec!["A".into()], duration_ms: 61_500, ..Default::default() }])
+                Ok(vec![Track { provider: ProviderKind::Spotify, id: "sp1".into(), title: "One, Two".into(), artists: vec!["A".into()], duration_ms: 61_500, ..Default::default() }])
             } else {
                 Ok(vec![])
             }
         };
-        let plan = build_plan(Playlist { name: "P".into(), id: "p".into(), provider: ProviderKind::Spotify, ..Default::default() }, src.clone(), ProviderKind::YouTube, &search, &|_, _| {}, &|| false);
+        let plan = build_plan(Playlist { name: "P".into(), id: "p".into(), provider: ProviderKind::Local, ..Default::default() }, src.clone(), ProviderKind::Spotify, &search, &|_, _| {}, &|| false);
         let (m, a, u, sel) = plan.counts();
         assert_eq!((m, a, u, sel), (1, 0, 1, 1));
         let added = RefCell::new(Vec::new());
@@ -415,7 +416,7 @@ mod tests {
         .unwrap();
         assert_eq!(log.added, 1);
         assert_eq!(log.skipped.len(), 1);
-        assert_eq!(*added.borrow(), vec!["yt1"]);
+        assert_eq!(*added.borrow(), vec!["sp1"]);
         assert!(Path::new(&log.backup_file).exists(), "source backup written");
         assert!(!load_logs().is_empty());
     }

@@ -6,7 +6,7 @@ use super::AquaApp;
 use crate::config::ProviderKind;
 use crate::matching::MatchStatus;
 use crate::model::{Playlist, Track};
-use crate::services::{spotify::SpotifyApi, youtube::YouTubeApi};
+use crate::services::spotify::SpotifyApi;
 use crate::transfer::{self, Plan, TransferLog};
 use eframe::egui::{self, RichText, Ui};
 use std::sync::atomic::Ordering;
@@ -51,12 +51,11 @@ impl TransferUi {
         self.last = Some(r);
         self.logs = None;
     }
-    pub fn remove_created(&mut self, sp: Arc<SpotifyApi>, yt: Arc<YouTubeApi>, jobs: &super::jobs::Jobs, log: TransferLog) {
+    pub fn remove_created(&mut self, sp: Arc<SpotifyApi>, jobs: &super::jobs::Jobs, log: TransferLog) {
         jobs.spawn("Delete transferred playlist", move |h| {
             let r = match log.target {
                 ProviderKind::Spotify => sp.unfollow_playlist(&log.created_playlist_id).map_err(|e| e.to_string()),
-                ProviderKind::YouTube => yt.delete_playlist(&log.created_playlist_id).map_err(|e| e.to_string()),
-                ProviderKind::Local => Ok(()),
+                ProviderKind::YouTube | ProviderKind::Local => Ok(()),
             };
             h.send(match r {
                 Ok(()) => Msg::Toast(format!("Removed the transferred copy of “{}”", log.source_name), false),
@@ -68,7 +67,7 @@ impl TransferUi {
 
 pub fn page(app: &mut AquaApp, ui: &mut Ui) {
     widgets::heading(ui, "🔃 Playlist Transfer");
-    widgets::note(ui, "Copy playlists between Spotify and YouTube Music, or back them up to files. The source playlist is never modified, and a backup is saved before every transfer.");
+    widgets::note(ui, "Copy playlists into Spotify — from local folders or from exported files (JSON, CSV, M3U) — or back them up to files. The source playlist is never modified, and a backup is saved before every transfer.");
     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         widgets::section(ui, "1. Source");
         source_picker(app, ui);
@@ -100,11 +99,8 @@ pub fn page(app: &mut AquaApp, ui: &mut Ui) {
 
         widgets::section(ui, "2. Destination");
         ui.horizontal(|ui| {
-            for p in [ProviderKind::Spotify, ProviderKind::YouTube] {
-                let signed = match p {
-                    ProviderKind::Spotify => app.spotify.is_signed_in(),
-                    _ => app.youtube.is_signed_in(),
-                };
+            for p in [ProviderKind::Spotify] {
+                let signed = app.spotify.is_signed_in();
                 let label = if signed { p.label().to_string() } else { format!("{} (sign in first)", p.label()) };
                 if ui.add_enabled(signed, egui::Button::selectable(app.transfer.target == Some(p), label)).clicked() {
                     app.transfer.target = Some(p);
@@ -113,10 +109,6 @@ pub fn page(app: &mut AquaApp, ui: &mut Ui) {
             }
         });
         let Some(target) = app.transfer.target else { return };
-        if target == ProviderKind::YouTube {
-            let n = tracks.len();
-            widgets::warn(ui, &format!("YouTube quota: matching uses ~{} units (100 per search) and adding uses ~{} units (50 per track) of the default 10,000/day. Large playlists may need several days.", n * 100 + n, n * 50 + 50));
-        }
 
         widgets::section(ui, "3. Match tracks");
         if app.transfer.building {
@@ -201,15 +193,9 @@ fn build(app: &mut AquaApp, src: Playlist, tracks: Vec<Track>, target: ProviderK
     app.jobs.cancel.store(false, Ordering::Relaxed);
     let cancel = app.jobs.cancel.clone();
     let sp = app.spotify.clone();
-    let yt = app.youtube.clone();
     app.jobs.spawn(format!("Match {} tracks", tracks.len()), move |h| {
         let _bg = crate::services::ratelimit::background();
-        let search = |q: &str| -> Result<Vec<Track>, String> {
-            match target {
-                ProviderKind::Spotify => sp.search_tracks(q, 8).map_err(|e| e.to_string()),
-                _ => yt.search_tracks(q, 6).map_err(|e| e.to_string()),
-            }
-        };
+        let search = |q: &str| -> Result<Vec<Track>, String> { sp.search_tracks(q, 8).map_err(|e| e.to_string()) };
         let plan = transfer::build_plan(src, tracks.clone(), target, &search, &|d, n| h.progress(d, n), &|| cancel.load(Ordering::Relaxed));
         h.send(Msg::PlanReady(plan, tracks));
     });
@@ -299,27 +285,12 @@ fn execute(app: &mut AquaApp) {
     let src_tracks = app.transfer.source.as_ref().map(|(_, t)| t.clone()).unwrap_or_default();
     app.transfer.executing = true;
     let sp = app.spotify.clone();
-    let yt = app.youtube.clone();
     let user = app.sp_profile.as_ref().map(|p| p.id.clone()).unwrap_or_default();
     app.jobs.spawn("Transfer playlist", move |h| {
         let _bg = crate::services::ratelimit::background();
-        let target = plan.target;
-        let create = |name: &str, desc: &str| -> Result<String, String> {
-            match target {
-                ProviderKind::Spotify => sp.create_playlist(&user, name, desc).map_err(|e| e.to_string()),
-                _ => yt.create_playlist(name, desc).map_err(|e| e.to_string()),
-            }
-        };
+        let create = |name: &str, desc: &str| -> Result<String, String> { sp.create_playlist(&user, name, desc).map_err(|e| e.to_string()) };
         let add = |id: &str, tracks: &[Track]| -> Result<(), String> {
-            match target {
-                ProviderKind::Spotify => sp.add_items(id, &tracks.iter().map(|t| if t.uri.is_empty() { format!("spotify:track:{}", t.id) } else { t.uri.clone() }).collect::<Vec<_>>()).map_err(|e| e.to_string()),
-                _ => {
-                    for t in tracks {
-                        yt.add_item(id, &t.id).map_err(|e| e.to_string())?;
-                    }
-                    Ok(())
-                }
-            }
+            sp.add_items(id, &tracks.iter().map(|t| if t.uri.is_empty() { format!("spotify:track:{}", t.id) } else { t.uri.clone() }).collect::<Vec<_>>()).map_err(|e| e.to_string())
         };
         let r = transfer::execute(&plan, &src_tracks, &create, &add, &|d, n| h.progress(d, n));
         h.send(Msg::TransferDone(r));

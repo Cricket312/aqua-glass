@@ -35,8 +35,6 @@ pub struct PlayerState {
     pub repeat: RepeatMode,
     pub volume: f32,
     pub muted: bool,
-    /// The current track is playing outside Aqua Glass (YouTube in the browser).
-    pub external: bool,
     pub message: Option<String>,
     pub error: Option<String>,
     pub spotify: SpotifyStatus,

@@ -1,8 +1,8 @@
 # Aqua Glass
 
 A native, lightweight music client for Windows 11 written in Rust (egui/eframe + OpenGL).
-It combines your **Spotify** library (with Premium playback), your **YouTube Music**
-library (via the official YouTube Data API) and **local files** in one interface, with a
+It combines your **Spotify** library (with Premium playback) and **local files** in one
+interface, with a
 searchable settings menu where every optional feature can be switched off and shows its
 RAM impact.
 
@@ -18,7 +18,7 @@ RAM impact.
 > sink). The Windows `.exe` is cross-compiled from Linux and was smoke-tested under
 > **Wine 9** (UI, portable mode, tray icon, global hotkeys, local playback via WASAPI,
 > auto-advance, command-line files) but has **not yet been run on a real Windows 11
-> machine**; Spotify and YouTube sign-in/playback have **not been tested
+> machine**; Spotify sign-in/playback has **not been tested
 > against the live services** (no accounts or network access to those services were
 > available while building). See [Known limitations](#known-limitations).
 
@@ -103,22 +103,16 @@ cookies are ever entered into Aqua Glass.
 * Disconnecting deletes the stored refresh token. Spotify has no API to revoke a grant;
   remove the app at <https://www.spotify.com/account/apps/> to revoke it fully.
 
-### YouTube Music
+### YouTube Music (removed in 0.6)
 
-Google does not offer a public YouTube *Music* API. Aqua Glass uses the official
-**YouTube Data API v3**, which requires a (free) Google Cloud OAuth client that you create
-once:
-
-1. <https://console.cloud.google.com/> → create a project → *APIs & Services* → enable
-   **YouTube Data API v3**.
-2. *OAuth consent screen*: External; add your Google account as a test user.
-3. *Credentials* → *Create credentials* → *OAuth client ID* → type **Desktop app**.
-4. In Aqua Glass: Settings → Music Services → paste the client ID, store the client
-   secret (it goes to Credential Manager), restart, then **Sign in with Google**.
-
-Default API quota is 10,000 units/day: search = 100 units, adding a track to a playlist = 50,
-reading = 1. Transferring a 100-track playlist to YouTube therefore needs about 15,000 units
-(two days of quota) — Aqua Glass shows this before you start.
+YouTube Music support was removed in version 0.6. Google offers no audio API for
+third-party apps, so YouTube songs could only open in the browser. On the first start of
+0.6, Aqua Glass deletes the stored Google credentials, the cached YouTube library and
+YouTube plays from the listening history. To keep YouTube Music playlists, *before*
+upgrading use Playlist Transfer in 0.4.x to copy them to Spotify or export them as
+JSON/CSV; 0.6's Playlist Transfer can import those files and match them on Spotify.
+(Google Takeout's playlist CSVs contain only video ids, not titles, so they can't be
+matched.)
 
 ### Local files
 
@@ -128,29 +122,24 @@ Normalization" is on.
 
 ## What works with which service
 
-| Capability | Spotify | YouTube Music | Local |
-|---|---|---|---|
-| Sign-in | OAuth PKCE (browser) | OAuth (browser, your Google client) | — |
-| Playlists (own + followed), order, descriptions, artwork | ✔ | ✔ (own) | folder scan |
-| Liked songs / liked music | ✔ | ✔ (liked videos in the Music category) | — |
-| Saved albums, followed artists | ✔ | ✖ not in the API | albums from tags |
-| Recently played | ✔ | ✖ not in the API | — |
-| Search | ✔ | ✔ (100 quota units each) | ✔ |
-| Artist / album pages | ✔ | ✖ (API has channels, not discographies) | albums |
-| **Playback inside Aqua Glass** | ✔ **Premium**, via librespot | ✖ — opens in YouTube Music in your browser | ✔ |
-| Play / pause / seek / next / previous / queue / shuffle / repeat | ✔ | queue order only; controls in the browser | ✔ |
-| Like a track | ✔ | ✔ | — |
-| Create playlist / add tracks (transfer target) | ✔ | ✔ | — |
-| Lyrics (LRCLIB) | ✔ | ✔ | ✔ (needs artist tag) |
-| EQ, visualizer, normalization, gapless | ✔ | ✖ | ✔ |
+| Capability | Spotify | Local |
+|---|---|---|
+| Sign-in | OAuth PKCE (browser) | — |
+| Playlists (own + followed), order, descriptions, artwork | ✔ | folder scan |
+| Liked songs | ✔ | — |
+| Saved albums, followed artists | ✔ | albums from tags |
+| Recently played | ✔ | — |
+| Search | ✔ | ✔ |
+| Artist / album pages | ✔ | albums |
+| **Playback inside Aqua Glass** | ✔ **Premium**, via librespot | ✔ |
+| Play / pause / seek / next / previous / queue / shuffle / repeat | ✔ | ✔ |
+| Like a track | ✔ | — |
+| Create playlist / add tracks (transfer target) | ✔ | — |
+| Lyrics (LRCLIB) | ✔ | ✔ (needs artist tag) |
+| EQ, visualizer, normalization, gapless | ✔ | ✔ |
 
-**Why YouTube tracks open in the browser:** Google provides no audio streaming API for
-third-party apps, and the YouTube Terms of Service prohibit extracting or downloading
-streams outside YouTube's own player. Rather than silently substituting an unofficial
-workaround, Aqua Glass opens the track in YouTube Music (or YouTube — configurable) and
-says so in the player bar. You can also use **"Find on the other service…"** on any
-track to play the same recording from Spotify instead — you always choose; recordings
-are never swapped silently.
+For a local file, **"Find on Spotify…"** looks up the same recording on Spotify. You always
+choose; recordings are never swapped silently.
 
 ## Using Aqua Glass
 
@@ -166,7 +155,7 @@ are never swapped silently.
 * **Home** shows a featured banner (from your own playlists or top mix), Recently Played, Favorite Playlists, Made For You (Spotify-made playlists
   you follow), Recently Added, Your Top Mixes, Discover New Music, Recently Imported Spotify
   Playlists and Local Music — each row appears only when there is real data for it.
-* **Service filter** (top bar): All / Spotify / YouTube / Local. Disabled services do no background work.
+* **Service filter** (top bar): All / Spotify / Local. Disabled services do no background work.
 * **Library import & sync** (Library page / Settings → Library & Synchronization):
   * *Accessing* a playlist reads it live from the service.
   * *Importing* caches it locally (`%APPDATA%\AquaGlass\library`) and keeps it in sync;
@@ -209,8 +198,7 @@ part of the queue in the background and refilled when fewer than 5 remain.
 * **Playable only:** each candidate is matched to a track you can actually play — your local
   library first, then Spotify (when Premium playback is ready) using the same strict
   matching as playlist transfer (no live/remix/cover substitutions). Unmatched candidates
-  are dropped. YouTube is used only if you choose it as provider (tracks open in the browser,
-  so the radio can't auto-advance there).
+  are dropped.
 * **Discovery strength:** *Familiar* (the seed's closest similar tracks), *Balanced* (plus the
   best-known songs of the 6 closest related artists), *Adventurous* (artists 4–24 in the
   related-artist list, seed artist down-weighted), *Deep Discovery* (artists 10–60, their
@@ -271,16 +259,17 @@ RAM badge:
 
 ## Privacy and security
 
-* No telemetry, analytics, crash reporting or advertising SDKs.
-* Network access only to: Spotify (accounts/api/CDN/access points), Google (OAuth and
-  YouTube Data API), image CDNs for artwork, and lrclib.net for lyrics (when Lyrics is on:
+* No telemetry, analytics or advertising SDKs. Crash reports (0.4.1+) are written only to
+  a local file; nothing is uploaded.
+* Network access only to: Spotify (accounts/api/CDN/access points), image CDNs for
+  artwork, Last.fm (Similarity Radio, when a key is set) and lrclib.net for lyrics (when Lyrics is on:
   sends title, artist, album, duration). Discord presence uses only the local Discord IPC pipe.
   The full table is in Settings → Privacy.
-* OAuth refresh tokens and the Google client secret are stored in **Windows Credential
+* OAuth refresh tokens and the Last.fm key are stored in **Windows Credential
   Manager** (`AquaGlass/...`), never in files, logs or exports. Error messages are scrubbed
   of token-like strings.
 * Diagnostic logging is off by default.
-* "Disconnect" deletes stored tokens (and revokes the grant at Google); optionally deletes
+* "Disconnect" deletes stored tokens; optionally deletes
   the cached library.
 
 ## Building from source
@@ -331,7 +320,7 @@ scripts/check-portable.sh        # portable crates have no UI/audio/OS deps; aqu
   duplicate/artist/recently-played/skip/like rules, unplayable candidates dropped, Last.fm
   response parsing, history bounds), plus: config persistence/migration/invalid files, feature registry and
   presets, disable/restore visuals, shortcut parsing and conflicts, theme loading and
-  validation, Spotify/YouTube response parsing (both 2026 and older field names), API
+  validation, Spotify response parsing (both 2026 and older field names), API
   error classification, OAuth PKCE (RFC 7636 vector), library import/sync/conflicts/
   corrupted cache, track matching (live/remix/cover/remaster/feat.), JSON/CSV/M3U
   round-trips, transfer planning/execution with a fake service, queue logic incl. a
@@ -373,7 +362,7 @@ crates/
     sync/            versioned cross-device sync + handoff data model (no networking)
     secrets.rs, storage.rs, platform.rs   hooks the platform fills in (secret store,
                      data directory, browser launcher)
-  aqua-providers/    oauth (PKCE loopback), spotify (Web API), youtube (Data API), lastfm,
+  aqua-providers/    oauth (PKCE loopback), spotify (Web API), lastfm,
                      lyrics, shared rate limiter — reqwest + rustls, no OS APIs
   aqua-radio/        Similarity Radio: gather (Last.fm) → rank/filter → resolve → queue
                      refill, driven through PlaybackControl
@@ -428,7 +417,7 @@ Honest list of what is not done or not verified:
   registry autostart and DWM acrylic were not exercised (Wine doesn't implement them
   faithfully), and Wine doesn't report private memory counters (the dashboard says so). The Windows memory figures in
   the app come from Windows itself; the numbers in docs/BENCHMARKS.md are from Linux.
-* **Spotify and YouTube were not tested against the live services** (no credentials or
+* **Spotify was not tested against the live service** (no credentials or
   network route to them in the build environment). Parsing is tested against fixtures that
   follow the documented response formats, but end-to-end sign-in, sync, playback and
   transfers need verification with real accounts.
@@ -440,8 +429,6 @@ Honest list of what is not done or not verified:
   `cargo test --test lastfm_live -- --ignored`), see **[docs/TESTING-LASTFM.md](docs/TESTING-LASTFM.md)**.
 * The interface follows the supplied Aqua Glass concept image. The window keeps the native
   Windows title bar (with dark mode) instead of the concept's custom-drawn one.
-* YouTube Music playback is not in-app (see above). No YouTube albums, artists pages,
-  recently played or lyrics from YouTube.
 * Not implemented: crossfade, WASAPI exclusive mode, lyric translations, lyric blur/
   position/animation-speed options, taskbar thumbnail toolbar buttons, raw HID
   macro-pad support (key-sending macro pads work), visualizer placement options other

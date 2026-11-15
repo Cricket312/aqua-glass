@@ -43,7 +43,7 @@ impl TrackRef {
         TrackRef { provider: t.provider, id, title: t.title.clone(), artists: t.artists.clone(), album: t.album.clone(), duration_ms: t.duration_ms, isrc: t.isrc.clone() }
     }
 
-    /// Stable key (`Spotify:<id>`, `YouTube:<id>`, `Local:<artist|title>`) —
+    /// Stable key (`Spotify:<id>`, `Local:<artist|title>`; `YouTube:<id>` in pre-0.6 data) —
     /// the same format as `Track::key()` for streaming tracks.
     pub fn key(&self) -> String {
         format!("{:?}:{}", self.provider, self.id)
@@ -115,7 +115,7 @@ impl ListeningState {
             track: st.current.as_ref().map(TrackRef::from_track),
             position_ms,
             duration_ms: st.duration_ms,
-            playing: st.playing && !st.external,
+            playing: st.playing,
             updated_ms: stamp.ms,
             stamp,
         }
@@ -282,7 +282,7 @@ impl SyncPlaylist {
     }
 
     /// Deterministic id for an imported provider playlist: importing the same
-    /// Spotify/YouTube playlist on two devices yields one synced playlist,
+    /// Spotify playlist on two devices yields one synced playlist,
     /// not two.
     pub fn import_id(provider: ProviderKind, provider_id: &str) -> String {
         format!("{provider:?}:{provider_id}")

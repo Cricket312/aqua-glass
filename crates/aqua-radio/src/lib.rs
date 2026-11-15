@@ -273,7 +273,6 @@ pub trait Resolver {
 pub struct StreamResolver {
     pub local: HashMap<String, Track>,
     pub spotify: Option<Arc<aqua_providers::spotify::SpotifyApi>>,
-    pub youtube: Option<Arc<aqua_providers::youtube::YouTubeApi>>,
     pub provider: RadioProvider,
     pub spotify_playable: bool,
     /// Remembered lookups (hits *and* misses) shared across refills.
@@ -370,17 +369,6 @@ impl Resolver for StreamResolver {
                 }
             }
         }
-        if found.is_none() && self.provider == RadioProvider::YouTube {
-            if let Some(yt) = &self.youtube {
-                if !self.take_budget() {
-                    return None;
-                }
-                searched = true;
-                if let Ok(r) = yt.search_tracks(&format!("{} {}", c.artist, c.title), 3) {
-                    found = accept(&src, r);
-                }
-            }
-        }
         if searched {
             self.cache.lock().unwrap().put(key, found.clone());
         }
@@ -462,7 +450,6 @@ pub struct Deps {
     /// The platform's playback controller (desktop: `audio::engine::Engine`).
     pub engine: Arc<dyn PlaybackControl>,
     pub spotify: Arc<aqua_providers::spotify::SpotifyApi>,
-    pub youtube: Arc<aqua_providers::youtube::YouTubeApi>,
     /// Local music the radio may play (desktop: the scanned local-files library).
     pub local_tracks: Arc<dyn Fn() -> Vec<Track> + Send + Sync>,
     pub history: Arc<Mutex<History>>,
@@ -679,7 +666,6 @@ impl W {
         let mut session = self.session.clone();
         let tx = self.tx.clone();
         let spotify = self.deps.spotify.clone();
-        let youtube = self.deps.youtube.clone();
         let local_tracks = self.deps.local_tracks.clone();
         let history = self.deps.history.clone();
         let spotify_playable = self.deps.engine.snapshot().spotify == SpotifyStatus::Ready && spotify.is_signed_in();
@@ -709,8 +695,8 @@ impl W {
                     let mut rng = rand::rng();
                     let ranked = rank(c, &seed, &prefs, &session, &|id| h.heard(id), &|id| h.heard_since(id, week), &mut rng);
                     drop(h);
-                    let resolver = StreamResolver { local: index, spotify: Some(spotify.clone()), youtube: Some(youtube.clone()), provider: prefs.provider, spotify_playable, cache, budget: std::cell::Cell::new(SEARCH_BUDGET) };
-                    if !spotify_playable && resolver.local.is_empty() && prefs.provider != RadioProvider::YouTube {
+                    let resolver = StreamResolver { local: index, spotify: Some(spotify.clone()), provider: prefs.provider, spotify_playable, cache, budget: std::cell::Cell::new(SEARCH_BUDGET) };
+                    if !spotify_playable && resolver.local.is_empty() {
                         return Err("No playable source: sign in to Spotify (Premium) or add local music.".to_string());
                     }
                     Ok(build_batch(ranked, want, &resolver, &mut session, want * 6))
@@ -907,7 +893,7 @@ mod tests {
     #[test]
     fn resolver_uses_budget_and_caches_misses() {
         // no Spotify client: nothing is searched, nothing cached, budget untouched
-        let r = StreamResolver { local: HashMap::new(), spotify: None, youtube: None, provider: RadioProvider::Automatic, spotify_playable: false, cache: Default::default(), budget: std::cell::Cell::new(2) };
+        let r = StreamResolver { local: HashMap::new(), spotify: None, provider: RadioProvider::Automatic, spotify_playable: false, cache: Default::default(), budget: std::cell::Cell::new(2) };
         assert!(r.resolve(&Cand { artist: "a".into(), title: "b".into(), score: 1.0, listeners: None, track: None }).is_none());
         assert_eq!(r.budget.get(), 2);
         assert!(r.cache.lock().unwrap().is_empty());

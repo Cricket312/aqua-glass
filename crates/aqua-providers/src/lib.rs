@@ -9,9 +9,6 @@
 //!
 //! * `spotify` — Spotify Web API (library, search, playlists) + OAuth PKCE.
 //!   Audio playback is platform code (desktop: `audio::spotify`, librespot).
-//! * `youtube` — YouTube Data API v3 (account playlists, liked music, search,
-//!   playlist creation). Playback stays on YouTube/YouTube Music itself,
-//!   because Google does not offer a third-party audio playback API.
 //! * `lyrics` — LRCLIB.
 
 pub mod lastfm;
@@ -19,7 +16,6 @@ pub mod lyrics;
 pub mod oauth;
 pub mod ratelimit;
 pub mod spotify;
-pub mod youtube;
 
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -64,7 +60,7 @@ impl std::fmt::Display for ApiError {
             ApiError::Forbidden(m) => write!(f, "Not permitted by the service: {m}"),
             ApiError::NotFound => write!(f, "Not found (it may have been deleted or made private)."),
             ApiError::RateLimited(s) => write!(f, "The service asked Aqua Glass to slow down — requests resume in about {}.", if *s >= 120 { format!("{} min", s / 60) } else { format!("{s} s") }),
-            ApiError::QuotaExceeded => write!(f, "Daily API quota exhausted — try again tomorrow (YouTube Data API quota resets at midnight Pacific Time)."),
+            ApiError::QuotaExceeded => write!(f, "Daily API quota exhausted — try again tomorrow."),
             ApiError::Network(m) => write!(f, "Network problem: {m}"),
             ApiError::Other(c, m) => write!(f, "Service error {c}: {m}"),
         }

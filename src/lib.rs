@@ -1,4 +1,4 @@
-//! Aqua Glass — native Spotify + YouTube Music client.
+//! Aqua Glass — native Spotify and local-files music client for Windows.
 
 pub mod audio;
 pub mod config;

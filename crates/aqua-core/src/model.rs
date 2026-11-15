@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 pub enum ProviderKind {
     #[default]
     Spotify,
+    /// Legacy: YouTube Music support was removed in 0.6. Kept so libraries,
+    /// history and sync data written by older versions still load.
     YouTube,
     Local,
 }
@@ -35,19 +37,13 @@ pub enum RepeatMode {
     One,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub enum YtOpen {
-    #[default]
-    YouTubeMusic,
-    YouTube,
-}
 
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
 #[serde(default)]
 pub struct Track {
     pub provider: ProviderKind,
-    /// Provider id: Spotify track id, YouTube video id, or absolute file path.
+    /// Provider id: Spotify track id or absolute file path (YouTube video id in pre-0.6 data).
     pub id: String,
     /// Spotify URI (`spotify:track:...`) when applicable.
     pub uri: String,
@@ -72,14 +68,10 @@ impl Track {
         format!("{:?}:{}", self.provider, self.id)
     }
     /// A URL a user can open in a browser for this track, if any.
-    pub fn web_url(&self, yt: YtOpen) -> Option<String> {
+    pub fn web_url(&self) -> Option<String> {
         match self.provider {
             ProviderKind::Spotify => Some(format!("https://open.spotify.com/track/{}", self.id)),
-            ProviderKind::YouTube => Some(match yt {
-                YtOpen::YouTubeMusic => format!("https://music.youtube.com/watch?v={}", self.id),
-                YtOpen::YouTube => format!("https://www.youtube.com/watch?v={}", self.id),
-            }),
-            ProviderKind::Local => None,
+            ProviderKind::YouTube | ProviderKind::Local => None,
         }
     }
 }
@@ -97,7 +89,7 @@ pub struct Playlist {
     pub public: Option<bool>,
     pub artwork_url: String,
     pub track_count: u32,
-    /// Spotify snapshot_id / YouTube etag — used to skip unchanged playlists on sync.
+    /// Spotify snapshot_id — used to skip unchanged playlists on sync.
     pub snapshot: String,
     /// Special "Liked Songs"/"Liked Music" collection.
     pub is_liked: bool,

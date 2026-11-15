@@ -56,7 +56,7 @@ pub fn apply_settings_state(cfg: &mut Config, s: &SettingsState, accept: &SyncPr
 
 /// Everything this PC could share, built from files on disk (works without
 /// the UI running). Imported provider playlists are included as provider
-/// references; Spotify/YouTube remain the owners.
+/// references; Spotify remains the owner.
 pub fn snapshot(cfg: &Config) -> Envelope<Snapshot> {
     let device = device_info();
     let mut clock = HybridClock::new(device.id.clone());
@@ -82,7 +82,7 @@ pub fn snapshot(cfg: &Config) -> Envelope<Snapshot> {
 
     // imported provider playlists (references to provider-owned data)
     let mut lib = aqua_core::library::LibraryStore::open(crate::util::data_dir().join("library"));
-    for p in [ProviderKind::Spotify, ProviderKind::YouTube] {
+    for p in [ProviderKind::Spotify] {
         let entries: Vec<_> = lib.lib(p).playlists.iter().filter(|e| e.imported && !e.removed_upstream).map(|e| (e.meta.clone(), e.last_synced)).collect();
         for (meta, synced) in entries {
             let tracks = lib.tracks(p, &meta.id).cloned().unwrap_or_default();

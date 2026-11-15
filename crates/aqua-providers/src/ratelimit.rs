@@ -27,8 +27,6 @@ pub struct Limits {
 pub fn limits_for(host: &str) -> Limits {
     if host.contains("spotify.com") {
         Limits { rate: 3.0, burst: 6.0, background_reserve: 3.0 }
-    } else if host.contains("googleapis.com") {
-        Limits { rate: 5.0, burst: 10.0, background_reserve: 4.0 }
     } else {
         Limits { rate: 5.0, burst: 10.0, background_reserve: 2.0 }
     }

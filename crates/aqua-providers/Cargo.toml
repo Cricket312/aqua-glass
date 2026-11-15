@@ -1,6 +1,6 @@
 [package]
 name = "aqua-providers"
-description = "Aqua Glass music providers: Spotify Web API, YouTube Data API, Last.fm, LRCLIB, OAuth, rate limiting"
+description = "Aqua Glass music providers: Spotify Web API, Last.fm, LRCLIB, OAuth, rate limiting"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

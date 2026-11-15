@@ -1,5 +1,5 @@
-//! Desktop secret storage adapter. Secrets (OAuth refresh tokens, the Google
-//! client secret, the Last.fm key) go to the Windows Credential Manager. On
+//! Desktop secret storage adapter. Secrets (Spotify OAuth refresh tokens,
+//! the Last.fm key) go to the Windows Credential Manager. On
 //! other desktop platforms (development only) they stay in memory for the
 //! session (the portable default in `aqua_core::secrets`).
 //!

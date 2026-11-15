@@ -193,7 +193,7 @@ pub fn home(app: &mut AquaApp, ui: &mut Ui) {
         12..=17 => "Good afternoon",
         _ => "Good evening",
     };
-    let any_account = app.spotify.is_signed_in() || app.youtube.is_signed_in();
+    let any_account = app.spotify.is_signed_in();
     let has_local = !app.cfg.services.local_folders.is_empty();
     // gather data (only real data; empty sections are not shown)
     let recent: Vec<Track> = {
@@ -226,7 +226,7 @@ pub fn home(app: &mut AquaApp, ui: &mut Ui) {
                     if app.cfg.services.spotify_enabled && ui.button("Connect Spotify").clicked() {
                         app.spotify_login();
                     }
-                    if ui.button("YouTube Music / local files…").clicked() {
+                    if ui.button("Local files…").clicked() {
                         app.settings.category = crate::features::Category::Services;
                         app.navigate(Page::Settings);
                     }
@@ -325,11 +325,8 @@ pub fn search(app: &mut AquaApp, ui: &mut Ui) {
                 ui.spinner();
             }
         });
-        if app.search.results.contains_key(&ProviderKind::YouTube) {
-            widgets::note(ui, "YouTube searches use 100 of your 10,000 daily Data-API quota units.");
-        }
         // songs from all providers, preferred provider first
-        let mut order = vec![ProviderKind::Spotify, ProviderKind::YouTube, ProviderKind::Local];
+        let mut order = vec![ProviderKind::Spotify, ProviderKind::Local];
         order.sort_by_key(|p| if *p == app.cfg.playback.preferred_provider { 0 } else { 1 });
         let mut songs: Vec<Track> = Vec::new();
         let mut albums: Vec<Album> = Vec::new();
@@ -432,7 +429,7 @@ fn song_rows(app: &mut AquaApp, ui: &mut Ui, tracks: &[Track]) {
         ui2.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.label(RichText::new(fmt_ms(t.duration_ms)).size(12.0).color(ui.visuals().weak_text_color()));
             if resp.hovered() || resp.has_focus() {
-                if t.provider != ProviderKind::Local && widgets::small_button(ui, "🔃", "Find this song on the other service").clicked() {
+                if t.provider == ProviderKind::Local && widgets::small_button(ui, "🔃", "Find this song on Spotify").clicked() {
                     act = Some((i, 2));
                 }
                 if widgets::small_button(ui, "+", "Add to queue").clicked() {
@@ -583,9 +580,6 @@ pub fn now_playing(app: &mut AquaApp, ui: &mut Ui) {
         f.set_width(r.width() * (pos as f32 / st.duration_ms.max(1) as f32).clamp(0.0, 1.0));
         ui.painter().rect_filled(f, 2, accent);
         ui.label(RichText::new(format!("{} / {}", fmt_ms(pos), fmt_ms(st.duration_ms))).size(11.5).color(ui.visuals().weak_text_color()));
-        if st.external {
-            widgets::note(ui, "This YouTube track plays in YouTube Music in your browser — Google provides no API for third-party audio playback.");
-        }
         ui.add_space(10.0);
         widgets::card(ui, None, |ui| super::shell::radio_controls(app, ui));
         super::pages::visualizer(app, ui);

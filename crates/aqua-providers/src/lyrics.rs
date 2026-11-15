@@ -1,5 +1,5 @@
 //! Lyrics from LRCLIB (https://lrclib.net) — a free, open, community lyrics
-//! database with time-synced LRC. Spotify's and YouTube's own lyrics are not
+//! database with time-synced LRC. Spotify's own lyrics are not
 //! available to third-party apps, so this is the licensed-for-reuse source used.
 //! Translations are not offered by LRCLIB, so Aqua Glass does not offer them.
 

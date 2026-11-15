@@ -15,7 +15,6 @@ pub struct SettingsUi {
     pub search: String,
     pub discord_app_id: String,
     pub discord_opts_last: Option<crate::discord::DiscordOpts>,
-    pub yt_secret_input: String,
     pub new_preset_name: String,
     pub rename_to: String,
     pub devices: Option<Vec<String>>,
@@ -225,7 +224,7 @@ fn category_keywords(c: Category) -> &'static [&'static str] {
         Category::Performance => &["ram", "memory", "cpu", "fps", "cache", "preset", "target", "budget"],
         Category::Backgrounds => &["background", "wallpaper", "blur", "image", "dim"],
         Category::Audio => &["eq", "equalizer", "device", "output", "bass", "balance", "buffer", "volume"],
-        Category::Services => &["spotify", "youtube", "account", "login", "sign in", "local", "folder", "premium"],
+        Category::Services => &["spotify", "account", "login", "sign in", "local", "folder", "premium"],
         Category::Library => &["sync", "import", "playlist", "liked", "conflict"],
         Category::Themes => &["theme", "color", "colour", "font", "editor"],
         Category::Appearance => &["font", "scale", "sidebar", "layout"],
@@ -539,14 +538,14 @@ fn playback(app: &mut AquaApp, ui: &mut Ui) {
     let p = &mut app.cfg.playback;
     ui.horizontal(|ui| {
         ui.label("Preferred provider");
-        for v in [ProviderKind::Spotify, ProviderKind::YouTube, ProviderKind::Local] {
+        for v in [ProviderKind::Spotify, ProviderKind::Local] {
             if ui.selectable_label(p.preferred_provider == v, v.label()).clicked() {
                 p.preferred_provider = v;
                 d = true;
             }
         }
     });
-    widgets::note(ui, "Results from the preferred service are listed first. When a track exists on both services, use “Find on the other service…” to choose explicitly — Aqua Glass never substitutes recordings silently.");
+    widgets::note(ui, "Results from the preferred source are listed first. For a local file, “Find on Spotify…” looks up the same recording — Aqua Glass never substitutes recordings silently.");
     ui.horizontal(|ui| {
         ui.label("Spotify streaming quality");
         for (l, v) in [("96 kbps", Quality::Low96), ("160 kbps", Quality::Normal160), ("320 kbps", Quality::High320)] {
@@ -559,17 +558,6 @@ fn playback(app: &mut AquaApp, ui: &mut Ui) {
     slider_u(ui, "Fade duration (ms) for “Fade In / Fade Out”", &mut p.fade_ms, 0..=2000, &mut d);
     slider_u(ui, "Seek step (s)", &mut p.seek_step_s, 1..=60, &mut d);
     slider_f(ui, "Volume step", &mut p.volume_step, 0.01..=0.25, &mut d);
-    ui.horizontal(|ui| {
-        ui.label("Open YouTube tracks in");
-        if ui.selectable_label(app.cfg.services.youtube_open_in == YtOpen::YouTubeMusic, "YouTube Music").clicked() {
-            app.cfg.services.youtube_open_in = YtOpen::YouTubeMusic;
-            d = true;
-        }
-        if ui.selectable_label(app.cfg.services.youtube_open_in == YtOpen::YouTube, "YouTube").clicked() {
-            app.cfg.services.youtube_open_in = YtOpen::YouTube;
-            d = true;
-        }
-    });
     if d {
         app.mark_dirty();
     }
@@ -605,7 +593,7 @@ fn radio_settings(app: &mut AquaApp, ui: &mut Ui) {
         ui.horizontal(|ui| {
             ui.label("Preferred provider");
             egui::ComboBox::from_id_salt("radio_provider").selected_text(app.cfg.radio.provider.label()).show_ui(ui, |ui| {
-                for pv in [crate::radio::RadioProvider::Automatic, crate::radio::RadioProvider::Spotify, crate::radio::RadioProvider::Local, crate::radio::RadioProvider::YouTube] {
+                for pv in [crate::radio::RadioProvider::Automatic, crate::radio::RadioProvider::Spotify, crate::radio::RadioProvider::Local] {
                     if ui.selectable_label(app.cfg.radio.provider == pv, pv.label()).clicked() {
                         app.cfg.radio.provider = pv;
                         d = true;
@@ -613,7 +601,7 @@ fn radio_settings(app: &mut AquaApp, ui: &mut Ui) {
                 }
             });
         });
-        widgets::note(ui, "Automatic: your local library first, then Spotify when Premium playback is ready. YouTube tracks can't auto-play inside Aqua Glass (they open in the browser), so YouTube is only used when chosen explicitly.");
+        widgets::note(ui, "Automatic: your local library first, then Spotify when Premium playback is ready.");
     });
     toggle_card(app, ui, "Rules", &["radio_prefer_unheard", "radio_avoid_recent", "radio_avoid_duplicates", "radio_repeat_artists", "radio_learn", "radio_stay_close"]);
     widgets::card(ui, Some("Recommendation source"), |ui| {
@@ -777,20 +765,18 @@ fn audio(app: &mut AquaApp, ui: &mut Ui) {
         ui.label(RichText::new("Feature").strong());
         ui.label(RichText::new("Spotify").strong());
         ui.label(RichText::new("Local files").strong());
-        ui.label(RichText::new("YouTube Music").strong());
         ui.end_row();
-        for (f, s, l, y) in [
-            ("EQ, bass, balance, visualizer", "✔", "✔", "✖ browser playback"),
-            ("Normalization", "✔ Spotify gain data", "✔ ReplayGain tags", "✖"),
-            ("Gapless", "✔", "✔", "✖"),
-            ("Quality setting", "✔ 96/160/320", "original file", "✖"),
-            ("Crossfade", "✖ not implemented", "✖ not implemented", "✖"),
-            ("Exclusive (WASAPI) output", "✖ not supported by the audio backend", "✖", "✖"),
+        for (f, s, l) in [
+            ("EQ, bass, balance, visualizer", "✔", "✔"),
+            ("Normalization", "✔ Spotify gain data", "✔ ReplayGain tags"),
+            ("Gapless", "✔", "✔"),
+            ("Quality setting", "✔ 96/160/320", "original file"),
+            ("Crossfade", "✖ not implemented", "✖ not implemented"),
+            ("Exclusive (WASAPI) output", "✖ not supported by the audio backend", "✖"),
         ] {
             ui.label(f);
             ui.label(s);
             ui.label(l);
-            ui.label(y);
             ui.end_row();
         }
     });
@@ -1039,50 +1025,6 @@ fn services(app: &mut AquaApp, ui: &mut Ui) {
         widgets::note(ui, "Playback requires Spotify Premium (enforced by Spotify). Library import, sync, export and transfer work with Free accounts. librespot is an unofficial, open-source client library; Spotify's terms restrict third-party clients — use at your own discretion.");
     }
 
-    // YouTube
-    widgets::section(ui, "YouTube Music");
-    d |= ui.checkbox(&mut app.cfg.services.youtube_enabled, "Enable YouTube Music").changed();
-    if app.cfg.services.youtube_enabled {
-        ui.label(format!("Status: {}", app.yt_status));
-        ui.horizontal(|ui| {
-            ui.label("Google OAuth client ID");
-            d |= ui.add(egui::TextEdit::singleline(&mut app.cfg.services.youtube_client_id).desired_width(340.0)).changed();
-        });
-        ui.horizontal(|ui| {
-            ui.label("Client secret");
-            ui.add(egui::TextEdit::singleline(&mut app.settings.yt_secret_input).password(true).hint_text(if crate::security::get(crate::security::keys::YOUTUBE_CLIENT_SECRET).is_some() { "stored in Credential Manager" } else { "" }).desired_width(240.0));
-            if ui.button("Store securely").clicked() && !app.settings.yt_secret_input.is_empty() {
-                match crate::security::set(crate::security::keys::YOUTUBE_CLIENT_SECRET, app.settings.yt_secret_input.trim()) {
-                    Ok(()) => app.toast("Client secret stored in Windows Credential Manager. Restart Aqua Glass to use it.", false),
-                    Err(e) => app.toast(format!("Could not store secret: {e}"), true),
-                }
-                app.settings.yt_secret_input.clear();
-            }
-        });
-        ui.horizontal(|ui| {
-            if app.youtube.is_signed_in() {
-                if ui.button("Disconnect…").clicked() {
-                    app.confirm = Some(Confirm::DisconnectYouTube);
-                }
-                if ui.button(format!("{} Sync now", icon::SYNC())).clicked() {
-                    app.sync_now(ProviderKind::YouTube, false);
-                }
-            } else if ui.add_enabled(app.youtube.configured(), egui::Button::new("Sign in with Google")).clicked() {
-                app.youtube_login();
-            }
-            if !app.youtube.configured() {
-                ui.label(RichText::new("(enter a client ID and restart)").weak());
-            }
-        });
-        ui.collapsing("How to set up YouTube Music (one time, ~5 minutes)", |ui| {
-            ui.label("1. Open console.cloud.google.com, create a project and enable “YouTube Data API v3”.");
-            ui.label("2. OAuth consent screen: External, add yourself as a test user.");
-            ui.label("3. Credentials › Create OAuth client ID › Application type “Desktop app”.");
-            ui.label("4. Paste the client ID above, store the client secret, restart Aqua Glass, then Sign in.");
-        });
-        widgets::note(ui, "What works: your playlists, liked music, search, creating playlists and adding tracks (official YouTube Data API v3). What doesn't: Google provides no audio API for third-party apps and its terms forbid extracting streams, so YouTube tracks open in YouTube Music in your browser. Albums and artist discographies aren't exposed by the API. Default quota: 10,000 units/day (search 100, add-to-playlist 50).");
-    }
-
     // Local
     widgets::section(ui, "Local files");
     d |= ui.checkbox(&mut app.cfg.services.local_enabled, "Enable local files").changed();
@@ -1135,7 +1077,7 @@ fn library(app: &mut AquaApp, ui: &mut Ui) {
     slider_u(ui, "Automatic sync interval (minutes)", &mut iv, 15..=1440, &mut d);
     app.cfg.sync.interval_min = iv;
     d |= ui.checkbox(&mut app.cfg.sync.include_followed_playlists, "Include playlists I follow (not only my own)").changed();
-    for p in [ProviderKind::Spotify, ProviderKind::YouTube] {
+    for p in [ProviderKind::Spotify] {
         widgets::section(ui, &format!("{} library", p.label()));
         let (last, err, mut il, mut ia, mut ir, conflicts) = {
             let mut s = app.library.lock().unwrap();
@@ -1462,8 +1404,7 @@ fn privacy(app: &mut AquaApp, ui: &mut Ui) {
         for (host, why, when) in [
             ("accounts.spotify.com, api.spotify.com", "Spotify sign-in, library, search, playlist creation", "Spotify enabled and signed in"),
             ("Spotify access points (librespot)", "Premium audio streaming", "when playing Spotify tracks"),
-            ("i.scdn.co, i.ytimg.com", "album artwork / thumbnails", "when covers are shown"),
-            ("accounts.google.com, oauth2.googleapis.com, www.googleapis.com", "YouTube sign-in, playlists, search", "YouTube enabled and signed in"),
+            ("i.scdn.co", "album artwork", "when covers are shown"),
             ("lrclib.net", "lyrics lookup (title, artist, album, duration)", "“Lyrics” enabled"),
             ("Local Discord app (IPC, no network)", "Rich Presence", "“Discord Rich Presence” enabled"),
         ] {
@@ -1486,15 +1427,10 @@ fn privacy(app: &mut AquaApp, ui: &mut Ui) {
         }
         if ui.button("Clear playback history (session)").clicked() {
             let _ = std::fs::remove_file(crate::util::data_dir().join("session.json"));
-            for p in [ProviderKind::Spotify, ProviderKind::YouTube] {
-                app.library.lock().unwrap().lib(p).recent.clear();
-            }
+            app.library.lock().unwrap().lib(ProviderKind::Spotify).recent.clear();
         }
         if app.spotify.is_signed_in() && ui.button("Disconnect Spotify…").clicked() {
             app.confirm = Some(Confirm::DisconnectSpotify);
-        }
-        if app.youtube.is_signed_in() && ui.button("Disconnect YouTube…").clicked() {
-            app.confirm = Some(Confirm::DisconnectYouTube);
         }
         if ui.button("Open data folder").clicked() {
             let _ = open::that_detached(crate::util::data_dir());

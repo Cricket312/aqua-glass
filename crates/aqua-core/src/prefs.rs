@@ -45,11 +45,12 @@ impl Strength {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum RadioProvider {
+    /// (`"YouTube"` from settings saved before 0.6 loads as Automatic.)
     #[default]
+    #[serde(alias = "YouTube")]
     Automatic,
     Spotify,
     Local,
-    YouTube,
 }
 
 impl RadioProvider {
@@ -58,7 +59,6 @@ impl RadioProvider {
             RadioProvider::Automatic => "Automatic",
             RadioProvider::Spotify => "Spotify",
             RadioProvider::Local => "Local files",
-            RadioProvider::YouTube => "YouTube Music (opens in browser)",
         }
     }
 }

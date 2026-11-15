@@ -35,14 +35,14 @@ pub struct Presence {
 /// Pure function: what should be shown (None = clear presence).
 pub fn build(st: &PlayerState, pos_ms: u64, o: &DiscordOpts) -> Option<Presence> {
     let t = st.current.as_ref()?;
-    if !st.playing && !o.paused_status && !st.external {
+    if !st.playing && !o.paused_status {
         return None;
     }
     if o.privacy {
         return Some(Presence { details: "Listening to music".into(), state: String::new(), large_image: None, large_text: None, start_unix: None });
     }
     let mut details = if o.title { t.title.clone() } else { "Listening to music".into() };
-    if !st.playing && !st.external {
+    if !st.playing {
         details = format!("⏸ {details}");
     }
     let mut state_parts = Vec::new();

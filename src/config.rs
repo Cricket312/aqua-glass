@@ -4,7 +4,7 @@
 //! (see `security`). Exported settings therefore never contain credentials.
 
 use crate::features::{self, Preset};
-pub use aqua_core::model::{ProviderKind, RepeatMode, YtOpen};
+pub use aqua_core::model::{ProviderKind, RepeatMode};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -289,15 +289,11 @@ impl Default for OverlayCfg {
 #[serde(default)]
 pub struct ServicesCfg {
     pub spotify_enabled: bool,
-    pub youtube_enabled: bool,
     pub local_enabled: bool,
     /// Optional own Spotify Developer client id for Web API calls.
     pub spotify_client_id: String,
     pub spotify_redirect_port: u16,
-    /// Google Cloud OAuth client (Desktop app) id. The client secret is kept in Credential Manager.
-    pub youtube_client_id: String,
     pub local_folders: Vec<String>,
-    pub youtube_open_in: YtOpen,
     /// Discord application id used for Rich Presence (not a secret).
     pub discord_app_id: String,
 }
@@ -305,13 +301,10 @@ impl Default for ServicesCfg {
     fn default() -> Self {
         Self {
             spotify_enabled: true,
-            youtube_enabled: true,
             local_enabled: true,
             spotify_client_id: String::new(),
             spotify_redirect_port: 8898,
-            youtube_client_id: String::new(),
             local_folders: Vec::new(),
-            youtube_open_in: YtOpen::YouTubeMusic,
             discord_app_id: String::new(),
         }
     }
@@ -560,6 +553,9 @@ impl Config {
         self.mini.opacity = self.mini.opacity.clamp(0.2, 1.0);
         self.overlay.opacity = self.overlay.opacity.clamp(0.1, 1.0);
         self.sync.interval_min = self.sync.interval_min.clamp(15, 24 * 60);
+        if self.playback.preferred_provider == ProviderKind::YouTube {
+            self.playback.preferred_provider = ProviderKind::Spotify; // YouTube Music was removed in 0.6
+        }
         self.radio.target = self.radio.target.clamp(5, 50);
         self.radio.threshold = self.radio.threshold.clamp(1, self.radio.target.saturating_sub(1).max(1));
     }
@@ -708,6 +704,31 @@ mod tests {
         let s = c.to_toml_string();
         let back = Config::from_toml_str(&s).unwrap();
         assert_eq!(back, c);
+    }
+
+    #[test]
+    fn pre_06_youtube_settings_load_without_losing_anything_else() {
+        let old = r#"
+            version = 2
+            [services]
+            spotify_client_id = "abc"
+            youtube_enabled = true
+            youtube_client_id = "x.apps.googleusercontent.com"
+            youtube_open_in = "YouTube"
+            [playback]
+            preferred_provider = "YouTube"
+            fade_ms = 900
+            [radio]
+            provider = "YouTube"
+            target = 20
+        "#;
+        let c = Config::from_toml_str(old).expect("old settings still load");
+        assert_eq!(c.services.spotify_client_id, "abc");
+        assert_eq!(c.playback.fade_ms, 900);
+        assert_eq!(c.playback.preferred_provider, ProviderKind::Spotify);
+        assert_eq!(c.radio.provider, crate::radio::RadioProvider::Automatic);
+        assert_eq!(c.radio.target, 20);
+        assert!(!c.to_toml_string().contains("youtube"));
     }
 
     #[test]

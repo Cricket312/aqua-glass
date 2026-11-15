@@ -5,7 +5,7 @@
 //! target decides locally, with [`plan_handoff`], what it can actually do
 //! with the providers it is signed in to. Pausing the source is a request to
 //! the source *Aqua Glass instance* (which pauses its own player) — never a
-//! Spotify Connect / YouTube remote command, which those services don't
+//! Spotify Connect remote command, which those services don't
 //! grant to third-party apps in general.
 
 use super::state::{ListeningState, QueueEntry, QueueState, TrackRef};
@@ -32,8 +32,6 @@ pub struct HandoffOffer {
 pub struct Capabilities {
     /// Providers this device can play in-app right now (signed in, Premium where required).
     pub playable: Vec<ProviderKind>,
-    /// Providers this device can only hand to an external app/browser.
-    pub external: Vec<ProviderKind>,
     /// Local files are available on this device (matched by artist/title).
     pub local_library: bool,
 }
@@ -46,9 +44,6 @@ pub enum HandoffAction {
     /// providers (by ISRC, then strict artist/title/duration matching) and play
     /// the match — or nothing if no confident match exists.
     ResumeMatched { original: TrackRef, search: Vec<ProviderKind>, position_ms: u64 },
-    /// Open in the provider's own app or site (e.g. YouTube Music), with a
-    /// start-time hint where the provider supports one.
-    OpenExternal { track: TrackRef, url: String, position_ms: u64 },
     Unavailable { reason: String },
 }
 
@@ -77,10 +72,6 @@ pub fn plan_handoff(offer: &HandoffOffer, caps: &Capabilities, now_ms: i64) -> H
 
     if track.provider != ProviderKind::Local && caps.playable.contains(&track.provider) {
         return in_app(HandoffAction::Resume { track, position_ms });
-    }
-    if track.provider == ProviderKind::YouTube && caps.external.contains(&ProviderKind::YouTube) {
-        let url = format!("https://music.youtube.com/watch?v={}&t={}s", track.id, position_ms / 1000);
-        return HandoffPlan { action: HandoffAction::OpenExternal { track, url, position_ms }, upcoming: vec![], pause_source: true };
     }
     let mut search: Vec<ProviderKind> = caps.playable.iter().copied().filter(|p| *p != ProviderKind::Local).collect();
     if caps.local_library {

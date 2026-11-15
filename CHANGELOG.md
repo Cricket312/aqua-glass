@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.6.0 — 2026-11-15 (YouTube Music removed)
+
+### Removed
+- **YouTube Music support.** Google offers no audio API for third-party apps, so YouTube songs
+  could only open in the browser. Removed:
+  - the YouTube Data API client;
+  - Google sign-in and YouTube library sync;
+  - YouTube search and liking;
+  - YouTube as a Playlist Transfer destination, a Similarity Radio provider and a
+    playback hand-off target;
+  - the related settings.
+
+  Aqua Glass is now a Spotify and local-files player.
+- The "playing in the browser" player state and its notices.
+
+### Changed
+- On the first start of 0.6, Aqua Glass removes:
+  - the stored Google credentials (refresh token and client secret) from Windows
+    Credential Manager;
+  - the cached YouTube library;
+  - YouTube plays from the listening history.
+
+  Nothing else is touched. A `youtube-removed` marker file records that this ran.
+- Old data still loads:
+  - `settings.toml` with YouTube keys loads with every other setting intact;
+  - a radio provider or preferred provider of "YouTube" becomes Automatic or Spotify;
+  - YouTube entries in a saved queue show "no longer supported";
+  - sync data with YouTube tracks still decodes (schema 1 unchanged).
+- "Find on the other service…" became "Find on Spotify…" for local files.
+- Playlist Transfer copies into Spotify, from local folders or exported JSON/CSV/M3U files.
+- The internal track type keeps a legacy `YouTube` value only so older files keep working.
+
+(There is no 0.5 release; the version jumps from 0.4.1 to 0.6.0.)
+
 ## 0.4.1 — 2026-11-15 (crash diagnostics)
 
 ### Fixed

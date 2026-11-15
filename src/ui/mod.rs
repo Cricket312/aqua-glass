@@ -20,7 +20,7 @@ use crate::library::LibraryStore;
 use crate::model::*;
 use crate::perf;
 use crate::services::lyrics::Lyrics;
-use crate::services::{spotify::SpotifyApi, youtube::YouTubeApi};
+use crate::services::spotify::SpotifyApi;
 use crate::shortcuts::{Action, Binding};
 use crate::theme::{self, Theme};
 use crate::winint::{self, UiCmd};
@@ -137,11 +137,8 @@ pub struct AquaApp {
     pub out: Output,
     pub library: Arc<Mutex<LibraryStore>>,
     pub spotify: Arc<SpotifyApi>,
-    pub youtube: Arc<YouTubeApi>,
     pub sp_profile: Option<crate::services::spotify::Profile>,
-    pub yt_channel: Option<crate::services::youtube::Channel>,
     pub sp_status: String,
-    pub yt_status: String,
     pub jobs: Jobs,
     msg_rx: mpsc::Receiver<Msg>,
     ui_rx: mpsc::Receiver<UiCmd>,
@@ -198,7 +195,6 @@ pub enum Confirm {
     EnableFeature(String),
     RemoveImported(ProviderKind, String, String),
     DisconnectSpotify,
-    DisconnectYouTube,
     ResetAll,
     RemoveTransferred(crate::transfer::TransferLog),
 }
@@ -217,7 +213,6 @@ impl AquaApp {
         lib.keep_in_memory = cfg.active("metadata_cache");
         let library = Arc::new(Mutex::new(lib));
         let spotify = Arc::new(SpotifyApi::new(&cfg.services.spotify_client_id, cfg.services.spotify_redirect_port));
-        let youtube = Arc::new(YouTubeApi::new(&cfg.services.youtube_client_id));
         let mut art = Artwork::new(ctx.clone(), cfg.perf.artwork_cache_mb, cfg.perf.artwork_max_px);
         art.disk_cache = cfg.active("artwork_disk_cache");
         let (themes, theme_errors) = all_themes();
@@ -278,11 +273,8 @@ impl AquaApp {
             out,
             library,
             spotify,
-            youtube,
             sp_profile: None,
-            yt_channel: None,
             sp_status: "Not signed in".into(),
-            yt_status: "Not signed in".into(),
             jobs,
             msg_rx,
             ui_rx,
@@ -343,8 +335,9 @@ impl AquaApp {
         }
         app.engine.send(Cmd::SetRepeat(app.cfg.playback.repeat));
         app.engine.send(Cmd::SetShuffle(app.cfg.playback.shuffle));
+        app.remove_legacy_youtube_data();
         if safe_mode {
-            app.toast("Safe mode: Spotify/YouTube sessions and the saved queue were not restored. Sign in again from Settings › Music Services when ready.", false);
+            app.toast("Safe mode: the Spotify session and the saved queue were not restored. Sign in again from Settings › Music Services when ready.", false);
         } else {
             app.restore_sessions();
             app.restore_queue();
@@ -521,14 +514,29 @@ impl AquaApp {
                 h.send(Msg::SpotifyAuth(r));
             });
         }
-        if self.cfg.services.youtube_enabled && self.youtube.configured() && crate::security::get(crate::security::keys::YOUTUBE_REFRESH).is_some() {
-            self.yt_status = "Restoring session…".into();
-            let api = self.youtube.clone();
-            self.jobs.spawn("YouTube: restore session", move |h| {
-                let r = api.restore().map_err(|e| e.to_string()).and_then(|ok| if ok { api.channel().map(Some).map_err(|e| e.to_string()) } else { Ok(None) });
-                h.send(Msg::YouTubeAuth(r));
-            });
+    }
+
+    /// YouTube Music support was removed in 0.6. Once, on the first start of 0.6:
+    /// delete stored Google credentials, the cached YouTube library and YouTube
+    /// plays from the listening history. Everything else is untouched.
+    fn remove_legacy_youtube_data(&mut self) {
+        let marker = crate::util::data_dir().join("youtube-removed");
+        if marker.exists() {
+            return;
         }
+        crate::security::delete(crate::security::keys::YOUTUBE_REFRESH);
+        crate::security::delete(crate::security::keys::YOUTUBE_CLIENT_SECRET);
+        self.library.lock().unwrap().clear_provider(ProviderKind::YouTube);
+        {
+            let mut h = self.history.lock().unwrap();
+            let before = h.events.len();
+            h.events.retain(|e| e.track.provider != ProviderKind::YouTube);
+            if h.events.len() != before {
+                h.save();
+            }
+        }
+        let _ = crate::util::atomic_write(&marker, b"YouTube Music data removed by Aqua Glass 0.6\n");
+        log::info!("removed legacy YouTube Music data");
     }
 
     pub fn spotify_login(&mut self) {
@@ -540,15 +548,6 @@ impl AquaApp {
         });
     }
 
-    pub fn youtube_login(&mut self) {
-        self.yt_status = "Waiting for browser sign-in…".into();
-        let api = self.youtube.clone();
-        self.jobs.spawn("YouTube: sign in", move |h| {
-            let r = api.login().map_err(|e| e.to_string()).and_then(|_| api.channel().map(Some).map_err(|e| e.to_string()));
-            h.send(Msg::YouTubeAuth(r));
-        });
-    }
-
     pub fn spotify_logout(&mut self, forget_library: bool) {
         self.spotify.logout();
         self.engine.send(Cmd::SpotifyDisconnect);
@@ -556,16 +555,6 @@ impl AquaApp {
         self.sp_status = "Signed out".into();
         if forget_library {
             self.library.lock().unwrap().clear_provider(ProviderKind::Spotify);
-        }
-    }
-
-    pub fn youtube_logout(&mut self, forget_library: bool) {
-        let api = self.youtube.clone();
-        self.jobs.spawn("YouTube: revoke access", move |_| api.logout());
-        self.yt_channel = None;
-        self.yt_status = "Signed out".into();
-        if forget_library {
-            self.library.lock().unwrap().clear_provider(ProviderKind::YouTube);
         }
     }
 
@@ -582,13 +571,6 @@ impl AquaApp {
                 self.jobs.spawn(label, move |h| {
                     let r = jobs::sync_spotify(&api, &store, followed, import_all, &h);
                     h.send(Msg::SyncDone { provider: ProviderKind::Spotify, res: r });
-                });
-            }
-            ProviderKind::YouTube if self.youtube.is_signed_in() => {
-                let api = self.youtube.clone();
-                self.jobs.spawn(label, move |h| {
-                    let r = jobs::sync_youtube(&api, &store, import_all, &h);
-                    h.send(Msg::SyncDone { provider: ProviderKind::YouTube, res: r });
                 });
             }
             ProviderKind::Local => self.scan_local(),
@@ -630,7 +612,8 @@ impl AquaApp {
     pub fn provider_enabled(&self, p: ProviderKind) -> bool {
         match p {
             ProviderKind::Spotify => self.cfg.services.spotify_enabled,
-            ProviderKind::YouTube => self.cfg.services.youtube_enabled,
+            // YouTube Music support was removed in 0.6; old entries stay hidden
+            ProviderKind::YouTube => false,
             ProviderKind::Local => self.cfg.services.local_enabled,
         }
     }
@@ -650,26 +633,18 @@ impl AquaApp {
                     h.send(m);
                 });
             }
-            ProviderKind::YouTube => {
-                let api = self.youtube.clone();
-                self.jobs.spawn("Like on YouTube", move |h| {
-                    let m = match api.like(&t.id) {
-                        Ok(()) => Msg::Toast(format!("Liked “{}” on YouTube", t.title), false),
-                        Err(e) => Msg::Toast(format!("Could not like: {e}"), true),
-                    };
-                    h.send(m);
-                });
-            }
+            ProviderKind::YouTube => self.toast("YouTube Music is no longer supported.", true),
             ProviderKind::Local => self.toast("Local files can't be liked.", true),
         }
     }
 
-    /// Look up the same recording on the other streaming service (never auto-substituted).
+    /// Look up the same recording on Spotify (never auto-substituted).
     pub fn find_alternatives(&mut self, t: &Track) {
-        let target = match t.provider {
-            ProviderKind::Spotify => ProviderKind::YouTube,
-            _ => ProviderKind::Spotify,
-        };
+        let target = ProviderKind::Spotify;
+        if t.provider == ProviderKind::Spotify {
+            self.alternatives = Some((t.clone(), Some(Err("This song is already on Spotify.".into()))));
+            return;
+        }
         self.alternatives = Some((t.clone(), None));
         let src = t.clone();
         let q = crate::matching::query_for(t);
@@ -677,13 +652,6 @@ impl AquaApp {
             ProviderKind::Spotify if self.spotify.is_signed_in() => {
                 let api = self.spotify.clone();
                 self.jobs.spawn("Find on Spotify", move |h| {
-                    let r = api.search_tracks(&q, 8).map(|c| crate::matching::rank(&src, c).0).map_err(|e| e.to_string());
-                    h.send(Msg::Alternatives { src, res: r });
-                });
-            }
-            ProviderKind::YouTube if self.youtube.is_signed_in() => {
-                let api = self.youtube.clone();
-                self.jobs.spawn("Find on YouTube", move |h| {
                     let r = api.search_tracks(&q, 8).map(|c| crate::matching::rank(&src, c).0).map_err(|e| e.to_string());
                     h.send(Msg::Alternatives { src, res: r });
                 });
@@ -708,14 +676,6 @@ impl AquaApp {
             let q2 = q.clone();
             self.jobs.spawn("Search Spotify", move |h| {
                 h.send(Msg::Search { gen, provider: ProviderKind::Spotify, res: api.search(&q2).map_err(|e| e.to_string()) });
-            });
-        }
-        if self.filter.allows(ProviderKind::YouTube) && self.cfg.services.youtube_enabled && self.youtube.is_signed_in() {
-            self.search.pending += 1;
-            let api = self.youtube.clone();
-            let q2 = q.clone();
-            self.jobs.spawn("Search YouTube", move |h| {
-                h.send(Msg::Search { gen, provider: ProviderKind::YouTube, res: api.search(&q2).map_err(|e| e.to_string()) });
             });
         }
         if self.filter.allows(ProviderKind::Local) && self.cfg.services.local_enabled {
@@ -752,14 +712,7 @@ impl AquaApp {
                         h.send(Msg::PlaylistTracks { provider: p, id: id2, res: r.map_err(|e| e.to_string()) });
                     });
                 }
-                ProviderKind::YouTube => {
-                    let api = self.youtube.clone();
-                    self.jobs.spawn("Load playlist", move |h| {
-                        let r = if id2 == crate::library::LIKED_ID { api.liked() } else { api.playlist_items(&id2) };
-                        h.send(Msg::PlaylistTracks { provider: p, id: id2, res: r.map_err(|e| e.to_string()) });
-                    });
-                }
-                ProviderKind::Local => {}
+                ProviderKind::YouTube | ProviderKind::Local => {}
             }
         }
         None
@@ -845,7 +798,7 @@ impl AquaApp {
             self.font_applied = want_font;
         }
         // audio engine options
-        if changed(&|c: &Config| format!("{:?}{:?}", c.playback.quality, c.playback.fade_ms)) || feat_changed(&["normalization", "gapless", "fades"]) || changed(&|c: &Config| format!("{:?}", c.services.youtube_open_in)) {
+        if changed(&|c: &Config| format!("{:?}{:?}", c.playback.quality, c.playback.fade_ms)) || feat_changed(&["normalization", "gapless", "fades"]) {
             self.engine.send(Cmd::Options(engine_opts(c)));
         }
         // DSP
@@ -985,7 +938,6 @@ impl AquaApp {
                     crate::radio::Deps {
                         engine: Arc::new(self.engine.clone()),
                         spotify: self.spotify.clone(),
-                        youtube: self.youtube.clone(),
                         local_tracks: {
                             let lib = self.library.clone();
                             Arc::new(move || lib.lock().unwrap().tracks(crate::config::ProviderKind::Local, crate::library::LOCAL_ALL_ID).cloned().unwrap_or_default())
@@ -1055,22 +1007,6 @@ impl AquaApp {
                     Err(e) => {
                         self.sp_status = format!("Sign-in failed: {e}");
                         self.toast(format!("Spotify: {e}"), true);
-                    }
-                },
-                Msg::YouTubeAuth(r) => match r {
-                    Ok(Some(c)) => {
-                        self.yt_status = format!("Signed in as {}", c.title);
-                        self.toast(format!("YouTube connected: {}", c.title), false);
-                        self.yt_channel = Some(c);
-                        let first = self.library.lock().unwrap().lib(ProviderKind::YouTube).last_sync == 0;
-                        if first {
-                            self.sync_now(ProviderKind::YouTube, false);
-                        }
-                    }
-                    Ok(None) => self.yt_status = "Not signed in".into(),
-                    Err(e) => {
-                        self.yt_status = format!("Sign-in failed: {e}");
-                        self.toast(format!("YouTube: {e}"), true);
                     }
                 },
                 Msg::Search { gen, provider, res } => {
@@ -1235,9 +1171,8 @@ impl AquaApp {
             Action::SwitchProvider => {
                 self.filter = match self.filter {
                     Filter::All => Filter::Only(ProviderKind::Spotify),
-                    Filter::Only(ProviderKind::Spotify) => Filter::Only(ProviderKind::YouTube),
-                    Filter::Only(ProviderKind::YouTube) => Filter::Only(ProviderKind::Local),
-                    Filter::Only(ProviderKind::Local) => Filter::All,
+                    Filter::Only(ProviderKind::Spotify) => Filter::Only(ProviderKind::Local),
+                    Filter::Only(_) => Filter::All,
                 };
                 let label = match self.filter {
                     Filter::All => "All services".to_string(),
@@ -1397,9 +1332,6 @@ impl AquaApp {
         if self.cfg.services.spotify_enabled && self.spotify.is_signed_in() {
             self.sync_now(ProviderKind::Spotify, false);
         }
-        if self.cfg.services.youtube_enabled && self.youtube.is_signed_in() {
-            self.sync_now(ProviderKind::YouTube, false);
-        }
     }
 
     /// Visualizer: tap the output only while a visualizer is on screen.
@@ -1493,7 +1425,6 @@ pub fn engine_opts(c: &Config) -> EngineOpts {
         normalisation: c.active("normalization"),
         gapless: c.active("gapless"),
         fade_ms: if c.active("fades") { c.playback.fade_ms } else { 0 },
-        yt_open: c.services.youtube_open_in,
     }
 }
 
@@ -1525,7 +1456,7 @@ impl eframe::App for AquaApp {
                 if let Some(t) = self.state.current.clone() {
                     // mark as liked when it's in a cached Liked collection
                     let k = t.key();
-                    if !self.liked_keys.contains(&k) && matches!(t.provider, ProviderKind::Spotify | ProviderKind::YouTube) {
+                    if !self.liked_keys.contains(&k) && t.provider == ProviderKind::Spotify {
                         let mut lib = self.library.lock().unwrap();
                         if lib.tracks(t.provider, crate::library::LIKED_ID).is_some_and(|l| l.iter().any(|x| x.id == t.id)) {
                             self.liked_keys.insert(k);
@@ -1723,22 +1654,17 @@ impl AquaApp {
                         }
                     });
                 }
-                Confirm::DisconnectSpotify | Confirm::DisconnectYouTube => {
-                    let sp = matches!(c, Confirm::DisconnectSpotify);
-                    ui.label(RichText::new(format!("Disconnect {}?", if sp { "Spotify" } else { "YouTube" })).strong());
+                Confirm::DisconnectSpotify => {
+                    ui.label(RichText::new("Disconnect Spotify?").strong());
                     ui.label("Stored tokens are deleted from Windows Credential Manager.");
-                    if sp {
-                        ui.label(RichText::new("To fully revoke access, also remove the app at spotify.com/account/apps.").weak());
-                    } else {
-                        ui.label(RichText::new("Aqua Glass also revokes the Google grant.").weak());
-                    }
+                    ui.label(RichText::new("To fully revoke access, also remove the app at spotify.com/account/apps.").weak());
                     ui.horizontal(|ui| {
                         if ui.button("Disconnect, keep library cache").clicked() {
-                            action = Some(Box::new(move |a: &mut AquaApp| if sp { a.spotify_logout(false) } else { a.youtube_logout(false) }));
+                            action = Some(Box::new(move |a: &mut AquaApp| a.spotify_logout(false)));
                             keep = false;
                         }
                         if ui.button("Disconnect and delete cache").clicked() {
-                            action = Some(Box::new(move |a: &mut AquaApp| if sp { a.spotify_logout(true) } else { a.youtube_logout(true) }));
+                            action = Some(Box::new(move |a: &mut AquaApp| a.spotify_logout(true)));
                             keep = false;
                         }
                         if ui.button("Cancel").clicked() {
@@ -1770,7 +1696,7 @@ impl AquaApp {
                     ui.horizontal(|ui| {
                         if ui.button("Delete created playlist").clicked() {
                             let l = log.clone();
-                            action = Some(Box::new(move |a: &mut AquaApp| a.transfer.remove_created(a.spotify.clone(), a.youtube.clone(), &a.jobs, l)));
+                            action = Some(Box::new(move |a: &mut AquaApp| a.transfer.remove_created(a.spotify.clone(), &a.jobs, l)));
                             keep = false;
                         }
                         if ui.button("Cancel").clicked() {
@@ -1843,7 +1769,7 @@ mod tests {
     use super::*;
     #[test]
     fn provider_filter() {
-        assert!(Filter::All.allows(ProviderKind::YouTube));
+        assert!(Filter::All.allows(ProviderKind::Local));
         assert!(Filter::Only(ProviderKind::Spotify).allows(ProviderKind::Spotify));
         assert!(!Filter::Only(ProviderKind::Spotify).allows(ProviderKind::Local));
     }

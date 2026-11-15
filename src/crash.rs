@@ -54,7 +54,7 @@ pub fn install() {
         eprintln!("Aqua Glass crashed: {msg} at {loc}");
         #[cfg(windows)]
         message_box(&format!(
-            "Aqua Glass hit an internal error and has to close.\n\n{msg}\n({loc}, thread '{thread}')\n\nDetails were saved to:\n{}\n\nPlease send that file when reporting the problem. Starting with --safe-mode skips restoring your Spotify/YouTube sessions and queue.",
+            "Aqua Glass hit an internal error and has to close.\n\n{msg}\n({loc}, thread '{thread}')\n\nDetails were saved to:\n{}\n\nPlease send that file when reporting the problem. Starting with --safe-mode skips restoring your Spotify session and queue.",
             log_path().display()
         ));
     }));

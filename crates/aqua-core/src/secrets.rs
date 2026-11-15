@@ -15,7 +15,9 @@ use std::sync::{Mutex, OnceLock};
 pub mod keys {
     pub const SPOTIFY_REFRESH: &str = "spotify.refresh_token";
     pub const SPOTIFY_WEBAPI_REFRESH: &str = "spotify.webapi_refresh_token";
+    /// Legacy (YouTube Music support was removed in 0.6): only deleted, never written.
     pub const YOUTUBE_REFRESH: &str = "youtube.refresh_token";
+    /// Legacy, see above.
     pub const YOUTUBE_CLIENT_SECRET: &str = "youtube.client_secret";
     pub const LASTFM_API_KEY: &str = "lastfm.api_key";
 }

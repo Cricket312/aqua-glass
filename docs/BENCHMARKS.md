@@ -22,7 +22,7 @@ RAM badges switch from "Estimated" to "Measured" as you use features.
 | Audio | PulseAudio 16.1 `module-null-sink` (real-time paced) via ALSA pulse plugin |
 | Window | 1240×780 logical px, scale 1.0 |
 | Media | 4 generated 44.1 kHz stereo WAV files (8–12 s), playing in a loop; 2560×1440 PNG background |
-| Network | no access to Spotify/Google/LRCLIB (services signed out) |
+| Network | no access to Spotify/Google/LRCLIB (YouTube Music was still supported then) (services signed out) |
 
 Metric: **private memory = `RssAnon`** (anonymous resident memory) from `/proc/<pid>/status`,
 the closest Linux equivalent of the Windows *private working set* that Aqua Glass shows.
