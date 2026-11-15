@@ -358,6 +358,15 @@ fn filter_menu(app: &mut AquaApp, ui: &mut Ui) {
 // ---------------------------------------------------------------------------
 // Bottom player
 
+/// Underline a clickable label on hover and show the hand cursor.
+fn link_hover(ui: &Ui, r: egui::Response) -> egui::Response {
+    if r.hovered() {
+        let y = r.rect.bottom() - 1.0;
+        ui.painter().hline(r.rect.x_range(), y, egui::Stroke::new(1.0, ui.visuals().text_color()));
+    }
+    r.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
 fn icon_btn(ui: &mut Ui, text: &str, size: f32, color: Color32, tip: &str) -> bool {
     ui.add(egui::Button::new(RichText::new(text).size(size).color(color)).frame(false).min_size(egui::vec2(30.0, 30.0))).on_hover_text(tip).clicked()
 }
@@ -385,10 +394,31 @@ fn player_bar(app: &mut AquaApp, ui: &mut Ui) {
                 ui.vertical(|ui| {
                     ui.add_space(((h - 42.0) / 2.0).max(0.0));
                     ui.set_max_width(side_w - art - 70.0);
-                    if ui.add(egui::Label::new(RichText::new(&t.title).size(15.0).strong()).truncate().sense(egui::Sense::click())).clicked() {
-                        app.navigate(Page::NowPlaying);
+                    let has_album = !t.album_id.is_empty() && !t.album.is_empty() && t.provider != ProviderKind::YouTube;
+                    let title = ui.add(egui::Label::new(RichText::new(&t.title).size(15.0).strong()).truncate().sense(egui::Sense::click()));
+                    let title = if has_album { link_hover(ui, title).on_hover_text(format!("Go to album: {}", t.album)) } else { title };
+                    if title.clicked() {
+                        let t = t.clone();
+                        app.open_album_of(&t);
                     }
-                    ui.add(egui::Label::new(RichText::new(t.artist_line()).size(12.5).color(v.weak_text_color())).truncate());
+                    // each artist is its own link
+                    let mut go_artist = None;
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 0.0;
+                        for (i, a) in t.artists.iter().enumerate() {
+                            if i > 0 {
+                                ui.label(RichText::new(", ").size(12.5).color(v.weak_text_color()));
+                            }
+                            let r = ui.add(egui::Label::new(RichText::new(a).size(12.5).color(v.weak_text_color())).truncate().sense(egui::Sense::click()));
+                            if link_hover(ui, r).on_hover_text(format!("Go to artist: {a}")).clicked() {
+                                go_artist = Some(i);
+                            }
+                        }
+                    });
+                    if let Some(i) = go_artist {
+                        let t = t.clone();
+                        app.open_artist_of(&t, i);
+                    }
                 });
                 if t.provider != ProviderKind::Local {
                     let liked = app.is_liked(t);
@@ -407,31 +437,29 @@ fn player_bar(app: &mut AquaApp, ui: &mut Ui) {
         ui.allocate_ui_with_layout(egui::vec2(center_w, h), egui::Layout::top_down(egui::Align::Center), |ui| {
             ui.add_space(((h - 66.0) / 2.0).max(0.0));
             ui.horizontal(|ui| {
-                let w = 4.0 * 40.0 + 44.0;
+                let w = 4.0 * (32.0 + ui.spacing().item_spacing.x) + 40.0;
                 ui.add_space(((ui.available_width() - w) / 2.0).max(0.0));
-                if icon_btn(ui, icon::SHUFFLE(), 15.0, if st.shuffle { accent } else { v.text_color() }, "Shuffle") {
+                if widgets::transport_button(ui, widgets::Transport::Shuffle, 16.0, if st.shuffle { accent } else { v.text_color() }, "Shuffle") {
                     app.engine.send(Cmd::SetShuffle(!st.shuffle));
                     app.cfg.playback.shuffle = !st.shuffle;
                     app.mark_dirty();
                 }
-                if icon_btn(ui, icon::PREV(), 17.0, v.strong_text_color(), "Previous") {
+                if widgets::transport_button(ui, widgets::Transport::Prev, 15.0, v.strong_text_color(), "Previous") {
                     app.engine.send(Cmd::Prev);
                 }
                 // seafoam circular play/pause with a dark glyph (no glow)
-                let pi = if st.playing { icon::PAUSE() } else { icon::PLAY() };
-                let b = egui::Button::new(RichText::new(pi).size(16.0).color(v.extreme_bg_color)).fill(accent).corner_radius(20).min_size(egui::vec2(40.0, 40.0));
-                if ui.add(b).on_hover_text("Play / Pause (Space)").clicked() {
+                if widgets::play_button(ui, st.playing, accent, v.extreme_bg_color, "Play / Pause (Space)") {
                     app.engine.send(Cmd::Toggle);
                 }
-                if icon_btn(ui, icon::NEXT(), 17.0, v.strong_text_color(), "Next") {
+                if widgets::transport_button(ui, widgets::Transport::Next, 15.0, v.strong_text_color(), "Next") {
                     app.engine.send(Cmd::Next);
                 }
                 let (ri, rc) = match st.repeat {
-                    RepeatMode::Off => (icon::REPEAT(), v.text_color()),
-                    RepeatMode::All => (icon::REPEAT(), accent),
-                    RepeatMode::One => (icon::REPEAT_ONE(), accent),
+                    RepeatMode::Off => (widgets::Transport::Repeat, v.text_color()),
+                    RepeatMode::All => (widgets::Transport::Repeat, accent),
+                    RepeatMode::One => (widgets::Transport::RepeatOne, accent),
                 };
-                if icon_btn(ui, ri, 15.0, rc, "Repeat: off / all / one") {
+                if widgets::transport_button(ui, ri, 16.0, rc, "Repeat: off / all / one") {
                     let r = match st.repeat {
                         RepeatMode::Off => RepeatMode::All,
                         RepeatMode::All => RepeatMode::One,

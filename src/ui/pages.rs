@@ -555,6 +555,26 @@ pub fn artist_view(app: &mut AquaApp, ui: &mut Ui, a: &Artist) {
         widgets::note(ui, "Artist pages are available for Spotify artists.");
         return;
     }
+    if a.id.is_empty() {
+        // opened from a track saved without artist ids: look the artist up by name
+        let key = format!("artist-lookup:{}", a.name);
+        if !app.view.loading.contains(&key) && app.spotify.is_signed_in() {
+            app.view.loading.insert(key);
+            let api = app.spotify.clone();
+            let name = a.name.clone();
+            app.jobs.spawn("Find artist", move |h| {
+                let r = api.find_artist(&name).map_err(|e| e.to_string());
+                h.send(super::jobs::Msg::ArtistFound { name, res: r });
+            });
+        }
+        ui.separator();
+        if app.spotify.is_signed_in() {
+            ui.spinner();
+        } else {
+            widgets::note(ui, "Sign in to Spotify to open artist pages.");
+        }
+        return;
+    }
     let albums = app.view.artist_albums.get(&a.id).cloned();
     if albums.is_none() && !app.view.loading.contains(&format!("artist:{}", a.id)) {
         app.view.loading.insert(format!("artist:{}", a.id));

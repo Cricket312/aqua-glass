@@ -49,6 +49,9 @@ pub struct Track {
     pub uri: String,
     pub title: String,
     pub artists: Vec<String>,
+    /// Provider ids of `artists`, same order (empty for local files and pre-0.7 data).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub artist_ids: Vec<String>,
     pub album: String,
     pub album_id: String,
     pub duration_ms: u64,

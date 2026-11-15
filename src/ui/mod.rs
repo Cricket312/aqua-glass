@@ -576,6 +576,39 @@ impl AquaApp {
         }));
     }
 
+    /// Open the album of a track (falls back to Now Playing when the album is unknown).
+    pub fn open_album_of(&mut self, t: &Track) {
+        if t.album_id.is_empty() || t.album.is_empty() || t.provider == ProviderKind::YouTube {
+            self.navigate(Page::NowPlaying);
+            return;
+        }
+        self.navigate(Page::Album(crate::model::Album {
+            provider: t.provider,
+            id: t.album_id.clone(),
+            name: t.album.clone(),
+            artists: t.artists.clone(),
+            artwork_url: t.artwork_url.clone(),
+            ..Default::default()
+        }));
+    }
+
+    /// Open the page of the `i`-th artist of a track. Spotify: the artist page (looked
+    /// up by name when the track has no artist ids); local files: a library search.
+    pub fn open_artist_of(&mut self, t: &Track, i: usize) {
+        let Some(name) = t.artists.get(i).cloned() else { return };
+        match t.provider {
+            ProviderKind::Spotify => {
+                let id = t.artist_ids.get(i).cloned().unwrap_or_default();
+                self.navigate(Page::Artist(crate::model::Artist { provider: ProviderKind::Spotify, id, name, ..Default::default() }));
+            }
+            _ => {
+                self.search.query = name;
+                self.navigate(Page::Search);
+                self.run_search();
+            }
+        }
+    }
+
     pub fn spotify_login(&mut self) {
         self.sp_status = "Waiting for browser sign-in…".into();
         let api = self.spotify.clone();
@@ -1064,6 +1097,20 @@ impl AquaApp {
                     let key = format!("album:{}", album.id);
                     self.view.loading.remove(&key);
                     self.view.live.insert(key, res);
+                }
+                Msg::ArtistFound { name, res } => {
+                    // the lookup key stays in `loading` on failure so the page doesn't retry every frame
+                    if matches!(res, Ok(Some(_))) {
+                        self.view.loading.remove(&format!("artist-lookup:{name}"));
+                    }
+                    let showing = matches!(&self.page, Page::Artist(a) if a.id.is_empty() && a.name == name);
+                    match res {
+                        // replace the placeholder page in place (no extra history entry)
+                        Ok(Some(a)) if showing => self.page = Page::Artist(a),
+                        Ok(None) if showing => self.toast(format!("Spotify has no artist named “{name}”."), true),
+                        Err(e) if showing => self.toast(format!("Could not open the artist: {e}"), true),
+                        _ => {}
+                    }
                 }
                 Msg::ArtistAlbums { artist, res } => {
                     self.view.loading.remove(&format!("artist:{}", artist.id));

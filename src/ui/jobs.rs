@@ -18,6 +18,8 @@ pub enum Msg {
     PlaylistTracks { provider: ProviderKind, id: String, res: Result<Vec<Track>, String> },
     AlbumTracks { album: Album, res: Result<Vec<Track>, String> },
     ArtistAlbums { artist: Artist, res: Result<Vec<Album>, String> },
+    /// Artist looked up by name (artist link on a track without artist ids).
+    ArtistFound { name: String, res: Result<Option<Artist>, String> },
     SyncDone { provider: ProviderKind, res: Result<SyncReport, String> },
     Lyrics { key: String, res: Result<Lyrics, String> },
     LocalScanned(Vec<Track>),

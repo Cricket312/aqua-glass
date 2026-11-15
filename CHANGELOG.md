@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.7.1 — 2026-11-15
+
+### Fixed
+- **Player controls were vertically offset.** Shuffle and previous sat about 4 px higher
+  than next and repeat. They were laid out before the 40 px play button set the row height,
+  and the emoji glyphs carried their own offsets. The transport icons (shuffle, previous,
+  play/pause, next, repeat, repeat one) are now drawn as vector shapes in equally tall
+  buttons. Measured on screen: all centres within half a pixel.
+
+### Added
+- **Clickable song title and artists in the player bar.**
+  - The title opens the song's album (Now Playing when the album is unknown).
+  - Each artist name opens that artist's page, with an underline and a tooltip on hover.
+  - Older tracks saved without artist ids are looked up by name on Spotify (a failed
+    lookup isn't retried in a loop).
+  - Local-file artists open a library search.
+- Spotify tracks now keep their artist ids (`Track::artist_ids`, omitted when empty, so
+  older files still load).
+
 ## 0.7.0 — 2026-11-15 (Spotify playback through Spotify Soloist)
 
 ### Why

@@ -373,6 +373,16 @@ impl SpotifyApi {
         Ok(parse_search(&v))
     }
 
+    /// Find an artist by name (for tracks saved without artist ids). Prefers an
+    /// exact (case-insensitive) name match, else Spotify's top result.
+    pub fn find_artist(&self, name: &str) -> Result<Option<Artist>, ApiError> {
+        let url = url::Url::parse_with_params(&format!("{API}/search"), &[("q", name), ("type", "artist"), ("limit", "5")])
+            .map_err(|e| ApiError::Other(0, e.to_string()))?;
+        let v = self.get(url.as_str())?;
+        let found: Vec<Artist> = v["artists"]["items"].as_array().into_iter().flatten().filter_map(parse_artist).collect();
+        Ok(found.iter().find(|a| a.name.eq_ignore_ascii_case(name.trim())).or(found.first()).cloned())
+    }
+
     /// Search for track candidates (used by transfer matching).
     pub fn search_tracks(&self, q: &str, limit: u32) -> Result<Vec<Track>, ApiError> {
         let lim = limit.to_string();
@@ -473,6 +483,7 @@ pub fn parse_track(v: &Value) -> Option<Track> {
         id,
         title: s(&v["name"]),
         artists: v["artists"].as_array().into_iter().flatten().map(|a| s(&a["name"])).collect(),
+        artist_ids: v["artists"].as_array().into_iter().flatten().map(|a| s(&a["id"])).collect(),
         album: s(&v["album"]["name"]),
         album_id: s(&v["album"]["id"]),
         duration_ms: v["duration_ms"].as_u64().unwrap_or(0),
@@ -592,6 +603,14 @@ mod tests {
         let b = parse_playlist(&p_old, "me").unwrap();
         assert_eq!(b.track_count, 5);
         assert!(!b.owned_by_user);
+    }
+
+    #[test]
+    fn tracks_keep_artist_ids_in_order() {
+        let t = parse_track(&json!({"id":"t1","name":"Song","artists":[{"id":"a1","name":"One"},{"id":"a2","name":"Two"}],"album":{"id":"al","name":"Album","images":[]}})).unwrap();
+        assert_eq!(t.artists, vec!["One", "Two"]);
+        assert_eq!(t.artist_ids, vec!["a1", "a2"]);
+        assert_eq!(t.album_id, "al");
     }
 
     #[test]

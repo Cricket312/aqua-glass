@@ -381,3 +381,92 @@ pub fn gradient_rounded(p: &egui::Painter, rect: egui::Rect, radius: f32, color_
     // left/right halves: add strips through the vertical centre line for a smoother ramp
     p.add(egui::Shape::mesh(mesh));
 }
+
+/// Player transport icons drawn as vector shapes, so they sit exactly in the centre
+/// of their buttons (emoji glyphs each carry their own vertical offset).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Transport {
+    Play,
+    Pause,
+    Prev,
+    Next,
+    Shuffle,
+    Repeat,
+    RepeatOne,
+}
+
+pub fn paint_transport(p: &egui::Painter, c: egui::Pos2, s: f32, kind: Transport, color: Color32) {
+    use egui::{pos2, Shape, Stroke};
+    let stroke = Stroke::new((s * 0.11).max(1.4), color);
+    let tri = |pts: Vec<egui::Pos2>| Shape::convex_polygon(pts, color, Stroke::NONE);
+    let bar = |x0: f32, x1: f32, h: f32| egui::Rect::from_min_max(pos2(x0, c.y - h / 2.0), pos2(x1, c.y + h / 2.0));
+    let arrow = |tip: egui::Pos2, dir: f32| {
+        // small open chevron pointing in x-direction `dir` (+1 right, -1 left)
+        let a = s * 0.2;
+        Shape::line(vec![pos2(tip.x - dir * a, tip.y - a), tip, pos2(tip.x - dir * a, tip.y + a)], stroke)
+    };
+    match kind {
+        // optical centre of a triangle is right of its box centre: shift left a little
+        Transport::Play => {
+            p.add(tri(vec![pos2(c.x - s * 0.32, c.y - s * 0.46), pos2(c.x + s * 0.46, c.y), pos2(c.x - s * 0.32, c.y + s * 0.46)]));
+        }
+        Transport::Pause => {
+            let (w, g, h) = (s * 0.22, s * 0.14, s * 0.84);
+            p.rect_filled(bar(c.x - g - w, c.x - g, h), 1.5, color);
+            p.rect_filled(bar(c.x + g, c.x + g + w, h), 1.5, color);
+        }
+        Transport::Next | Transport::Prev => {
+            let d = if kind == Transport::Next { 1.0 } else { -1.0 };
+            let h = s * 0.76;
+            p.add(tri(vec![pos2(c.x - d * s * 0.42, c.y - h / 2.0), pos2(c.x + d * s * 0.2, c.y), pos2(c.x - d * s * 0.42, c.y + h / 2.0)]));
+            let (a, b) = (c.x + d * s * 0.26, c.x + d * s * 0.42);
+            p.rect_filled(bar(a.min(b), a.max(b), h), 1.0, color);
+        }
+        Transport::Shuffle => {
+            let (x0, x1, yt, yb) = (c.x - s * 0.5, c.x + s * 0.48, c.y - s * 0.32, c.y + s * 0.32);
+            let k = s * 0.26;
+            p.add(Shape::line(vec![pos2(x0, yt), pos2(x0 + k, yt), pos2(x1 - k, yb), pos2(x1, yb)], stroke));
+            p.add(Shape::line(vec![pos2(x0, yb), pos2(x0 + k, yb), pos2(x1 - k, yt), pos2(x1, yt)], stroke));
+            p.add(arrow(pos2(x1, yt), 1.0));
+            p.add(arrow(pos2(x1, yb), 1.0));
+        }
+        Transport::Repeat | Transport::RepeatOne => {
+            let (x0, x1, yt, yb) = (c.x - s * 0.48, c.x + s * 0.48, c.y - s * 0.3, c.y + s * 0.3);
+            // top run: left side up, across to the right with an arrow
+            p.add(Shape::line(vec![pos2(x0, c.y + s * 0.05), pos2(x0, yt), pos2(x1 - s * 0.05, yt)], stroke));
+            p.add(arrow(pos2(x1 - s * 0.05, yt), 1.0));
+            // bottom run: right side down, across to the left with an arrow
+            p.add(Shape::line(vec![pos2(x1, c.y - s * 0.05), pos2(x1, yb), pos2(x0 + s * 0.05, yb)], stroke));
+            p.add(arrow(pos2(x0 + s * 0.05, yb), -1.0));
+            if kind == Transport::RepeatOne {
+                p.text(c, egui::Align2::CENTER_CENTER, "1", egui::FontId::proportional(s * 0.55), color);
+            }
+        }
+    }
+}
+
+/// Frameless round icon button with a vector transport icon.
+pub fn transport_button(ui: &mut Ui, kind: Transport, icon_px: f32, color: Color32, tip: &str) -> bool {
+    // same height as the 40 px play button so every control shares one centre line
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(32.0, 40.0), egui::Sense::click());
+    if ui.is_rect_visible(rect) {
+        let p = ui.painter();
+        if resp.hovered() {
+            p.circle_filled(rect.center(), 16.0, ui.visuals().widgets.hovered.weak_bg_fill.gamma_multiply(0.6));
+        }
+        paint_transport(p, rect.center(), icon_px, kind, color);
+    }
+    resp.on_hover_text(tip).clicked()
+}
+
+/// The filled circular play/pause button.
+pub fn play_button(ui: &mut Ui, playing: bool, fill: Color32, glyph: Color32, tip: &str) -> bool {
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(40.0, 40.0), egui::Sense::click());
+    if ui.is_rect_visible(rect) {
+        let p = ui.painter();
+        let f = if resp.hovered() { fill.gamma_multiply(1.12) } else { fill };
+        p.circle_filled(rect.center(), 20.0, f);
+        paint_transport(p, rect.center(), 15.0, if playing { Transport::Pause } else { Transport::Play }, glyph);
+    }
+    resp.on_hover_text(tip).clicked()
+}
