@@ -93,7 +93,47 @@ pub fn init_logging(file_logging: bool) {
     }
     #[cfg(debug_assertions)]
     loggers.push(SimpleLogger::new(LevelFilter::Info, cfg));
+    loggers.push(Box::new(PlaybackErrorCapture));
     let _ = CombinedLogger::init(loggers);
+}
+
+/// Most recent warning/error from the Spotify playback library, so the player can
+/// say *why* a song didn't play (always on; keeps one short message in memory).
+static LAST_PLAYBACK_ERROR: std::sync::Mutex<Option<(std::time::Instant, String)>> = std::sync::Mutex::new(None);
+
+struct PlaybackErrorCapture;
+
+impl log::Log for PlaybackErrorCapture {
+    fn enabled(&self, m: &log::Metadata) -> bool {
+        m.level() <= log::Level::Warn && m.target().starts_with("librespot")
+    }
+    fn log(&self, r: &log::Record) {
+        if self.enabled(r.metadata()) {
+            let mut msg = crate::security::scrub(&r.args().to_string());
+            if msg.chars().count() > 160 {
+                msg = msg.chars().take(160).collect::<String>() + "…";
+            }
+            *LAST_PLAYBACK_ERROR.lock().unwrap() = Some((std::time::Instant::now(), msg));
+        }
+    }
+    fn flush(&self) {}
+}
+
+impl simplelog::SharedLogger for PlaybackErrorCapture {
+    fn level(&self) -> log::LevelFilter {
+        log::LevelFilter::Warn
+    }
+    fn config(&self) -> Option<&simplelog::Config> {
+        None
+    }
+    fn as_log(self: Box<Self>) -> Box<dyn log::Log> {
+        self
+    }
+}
+
+/// The playback library's last error, if it happened after `since`.
+pub fn playback_error_since(since: std::time::Instant) -> Option<String> {
+    LAST_PLAYBACK_ERROR.lock().unwrap().as_ref().filter(|(t, _)| *t >= since).map(|(_, m)| m.clone())
 }
 
 /// Case-insensitive "contains" used by settings search and library filters.

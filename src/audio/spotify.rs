@@ -89,7 +89,7 @@ impl SpotifyPlayer {
             while let Some(ev) = ch.recv().await {
                 let mapped = match ev {
                     PlayerEvent::EndOfTrack { play_request_id, .. } => Some(EngineEvent::SpotifyEnded(play_request_id)),
-                    PlayerEvent::Unavailable { play_request_id, .. } => Some(EngineEvent::SpotifyUnavailable(play_request_id)),
+                    PlayerEvent::Unavailable { play_request_id, track_id } => Some(EngineEvent::SpotifyUnavailable(play_request_id, track_id.to_id().unwrap_or_default())),
                     PlayerEvent::TimeToPreloadNextTrack { .. } => Some(EngineEvent::SpotifyPreload),
                     PlayerEvent::Playing { play_request_id, position_ms, .. } => Some(EngineEvent::SpotifyPlaying(play_request_id, position_ms)),
                     PlayerEvent::PlayRequestIdChanged { play_request_id } => Some(EngineEvent::SpotifyRequestId(play_request_id)),

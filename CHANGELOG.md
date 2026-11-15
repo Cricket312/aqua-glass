@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.6.2 — 2026-11-15
+
+### Fixed
+- **Spotify songs skipped without playing (most visible with Similarity Radio).**
+  - When librespot couldn't *preload* the next song, it reported "unavailable" with the
+    *current* song's request id, and Aqua Glass skipped the current song. Each skip made
+    the radio refill, so it never ended.
+  - Failures of the preloaded track are now told apart by track id and ignored.
+  - Late events from earlier requests are ignored by request id.
+  - "End of track" before any audio arrived now counts as a failure instead of a
+    finished song.
+- **No more endless skipping:** after 3 Spotify songs in a row fail to play, playback
+  stops with an error instead of racing through the queue.
+- **The reason is shown:** the player shows librespot's own error message (for example
+  an audio-key or fetch error) instead of a generic "unavailable".
+- Spotify tracks without a `uri` field (some 2026 API responses) are now played by id.
+
 ## 0.6.1 — 2026-11-15
 
 ### Fixed

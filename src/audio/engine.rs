@@ -69,7 +69,8 @@ pub enum EngineEvent {
     Cmd(Cmd),
     LocalEnded(u64, Result<(), String>),
     SpotifyEnded(u64),
-    SpotifyUnavailable(u64),
+    /// (play request id, id of the track that failed — may be the *preloaded* next track)
+    SpotifyUnavailable(u64, String),
     SpotifyPreload,
     SpotifyPlaying(u64, u32),
     SpotifyRequestId(u64),
@@ -131,6 +132,10 @@ impl Engine {
             last_current: None,
             leave_hint: None,
             record_seq: 0,
+            sp_req: None,
+            sp_load_frame: 0,
+            sp_loaded_at: Instant::now(),
+            sp_failures: 0,
         };
         std::thread::Builder::new()
             .name("playback-engine".into())
@@ -272,6 +277,13 @@ struct Worker {
     /// (listened ms, natural end) for the track being left.
     leave_hint: Option<(u64, bool)>,
     record_seq: u64,
+    /// Spotify request id of the current load (from PlayRequestIdChanged).
+    sp_req: Option<u64>,
+    /// Output frame counter when the current Spotify track was loaded.
+    sp_load_frame: u64,
+    sp_loaded_at: Instant,
+    /// Spotify tracks in a row that failed to produce any audio.
+    sp_failures: u32,
 }
 
 impl Worker {
@@ -435,7 +447,11 @@ impl Worker {
             match &self.spotify {
                 Some(sp) => {
                     sp.gen.store(self.out.generation(), Ordering::Release);
-                    match sp.load(&track.uri, start_ms) {
+                    let uri = if track.uri.is_empty() { format!("spotify:track:{}", track.id) } else { track.uri.clone() };
+                    self.sp_req = None;
+                    self.sp_load_frame = self.out.s.pushed.load(Ordering::Relaxed);
+                    self.sp_loaded_at = Instant::now();
+                    match sp.load(&uri, start_ms) {
                         Ok(()) => self.active = Active::Spotify,
                         Err(e) => self.set_error(e.to_string()),
                     }
@@ -455,6 +471,29 @@ impl Worker {
         {
             let _ = (track, start_ms);
             self.set_error("This build was compiled without Spotify playback (feature `spotify-playback`).");
+        }
+    }
+
+    /// The current Spotify track produced no audio. Skip it, but stop after 3 in a
+    /// row instead of racing through the queue (and making the radio refill forever).
+    fn spotify_failed(&mut self) {
+        self.sp_failures += 1;
+        let title = self.q.current().map(|t| t.title.clone()).unwrap_or_default();
+        let why = crate::util::playback_error_since(self.sp_loaded_at).map(|e| format!(" ({e})")).unwrap_or_default();
+        if self.sp_failures >= 3 {
+            self.sp_failures = 0;
+            self.stop_all();
+            self.playing = false;
+            self.out.set_paused(true);
+            self.set_error(format!("Spotify couldn't play 3 songs in a row{why}. Playback stopped. Check that your account is Premium; --debug-log records details."));
+            return;
+        }
+        self.set_error(format!("Spotify couldn't play “{title}”{why} — skipping."));
+        if self.q.advance(false).is_some() {
+            self.start_current(0, true);
+        } else {
+            self.playing = false;
+            self.publish(|_| {});
         }
     }
 
@@ -580,16 +619,31 @@ impl Worker {
                 }
                 self.source_finished();
             }
-            EngineEvent::SpotifyEnded(_) => {
-                if matches!(self.active, Active::Spotify) {
+            EngineEvent::SpotifyEnded(id) => {
+                if !matches!(self.active, Active::Spotify) || self.sp_req.is_some_and(|r| r != id) {
+                    return; // a previous request finishing late
+                }
+                // librespot also reports "end of track" when it can't fetch/decode audio
+                let pushed = self.out.s.pushed.load(Ordering::Relaxed).saturating_sub(self.sp_load_frame);
+                if pushed < self.out.rate().max(1) as u64 {
+                    self.spotify_failed();
+                } else {
+                    self.sp_failures = 0;
                     self.source_finished();
                 }
             }
-            EngineEvent::SpotifyUnavailable(_) => {
-                self.set_error("This Spotify track is unavailable in your region or account.");
-                if self.q.advance(false).is_some() {
-                    self.start_current(0, true);
+            EngineEvent::SpotifyUnavailable(id, track_id) => {
+                let current = self.q.current().filter(|t| t.provider == ProviderKind::Spotify).map(|t| t.id.clone());
+                if current.as_deref() != Some(track_id.as_str()) {
+                    // the *preloaded next* track failed (librespot reports it with the
+                    // current request id) — the current song is fine; don't skip it
+                    log::warn!("Spotify: could not preload the next track ({track_id})");
+                    return;
                 }
+                if !matches!(self.active, Active::Spotify) || self.sp_req.is_some_and(|r| r != id) {
+                    return;
+                }
+                self.spotify_failed();
             }
             EngineEvent::SpotifyPreload => {
                 #[cfg(feature = "spotify-playback")]
@@ -601,7 +655,12 @@ impl Worker {
                     }
                 }
             }
-            EngineEvent::SpotifyPlaying(..) | EngineEvent::SpotifyRequestId(_) => {}
+            EngineEvent::SpotifyRequestId(id) => {
+                if matches!(self.active, Active::Spotify) {
+                    self.sp_req = Some(id);
+                }
+            }
+            EngineEvent::SpotifyPlaying(..) => {}
             EngineEvent::SpotifyDisconnected => {
                 self.publish(|s| s.spotify = SpotifyStatus::Unavailable("Spotify session disconnected; reconnecting on next play.".into()));
                 #[cfg(feature = "spotify-playback")]
@@ -616,6 +675,7 @@ impl Worker {
     fn command(&mut self, c: Cmd) {
         match c {
             Cmd::Play { tracks, start } => {
+                self.sp_failures = 0;
                 self.q.set(tracks, start);
                 self.pending_restore_ms = None;
                 self.start_current(0, true);
@@ -704,6 +764,7 @@ impl Worker {
                 }
             }
             Cmd::Next => {
+                self.sp_failures = 0;
                 self.pending.clear();
                 if self.q.advance(false).is_some() {
                     self.start_current(0, true);
@@ -727,6 +788,7 @@ impl Worker {
                 self.seek(p.max(0) as u64);
             }
             Cmd::JumpTo(opos) => {
+                self.sp_failures = 0;
                 if opos < self.q.order.len() {
                     self.pending.clear();
                     self.q.pos = Some(opos);
