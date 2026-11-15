@@ -1,6 +1,10 @@
-//! Producer-side DSP: 10-band EQ, bass boost, preamp/ReplayGain, balance, and
-//! a linear resampler. Runs on the decoder thread (not the real-time callback);
-//! each stage is skipped entirely when its feature is off.
+//! DSP: 10-band EQ, bass boost, preamp, balance and a linear resampler.
+//!
+//! The EQ/bass/preamp/balance `Processor` runs in the real-time output callback,
+//! after the playback buffer, so setting changes are heard immediately instead of
+//! after the buffered audio (≈0.5 s) has played. It never blocks there: new
+//! parameters are picked up with `try_lock`. Each stage is skipped entirely when
+//! its feature is off. Per-track ReplayGain stays on the producer side.
 
 use crate::config::EQ_FREQS;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -128,8 +132,11 @@ impl Processor {
         if v == self.version {
             return;
         }
+        // real-time callback: never wait for the UI thread; retry on the next buffer
+        let Ok(g) = shared.params.try_lock() else { return };
+        let p = g.clone();
+        drop(g);
         self.version = v;
-        let p = shared.params.lock().unwrap().clone();
         for (i, f) in EQ_FREQS.iter().enumerate() {
             let g = p.eq_gains_db[i];
             self.eq_active[i] = p.eq_on && g.abs() > 0.05;

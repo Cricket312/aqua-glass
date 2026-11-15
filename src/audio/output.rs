@@ -1,9 +1,10 @@
 //! The single audio output pipeline (cpal › WASAPI shared mode on Windows).
 //!
 //! Producers (librespot sink, local-file decoder) push interleaved stereo f32
-//! at the device rate into a bounded ring buffer. The real-time callback only
-//! copies samples, applies volume/fades and, when the visualizer is visible,
-//! copies a mono tap for the FFT. Device loss is detected via the error
+//! at the device rate into a bounded ring buffer. The real-time callback copies
+//! samples, applies the EQ/bass/preamp/balance (so changes are heard at once),
+//! volume and fades and, when the visualizer is visible, copies a mono tap for
+//! the FFT. Device loss is detected via the error
 //! callback and the stream is reopened on the default device.
 
 use super::dsp::{Processor, Resampler, SharedDsp};
@@ -216,7 +217,8 @@ pub struct Feeder {
     out: Output,
     gen: u64,
     resampler: Resampler,
-    proc: Processor,
+    /// Per-track ReplayGain (applied here, with the track's samples).
+    track_gain: f32,
     rate: u32,
     dev_rate: u32,
     stereo: Vec<f32>,
@@ -230,7 +232,7 @@ impl Feeder {
             out: out.clone(),
             gen,
             resampler: Resampler::new(src_rate, rate),
-            proc: Processor::new(rate),
+            track_gain: 1.0,
             rate: src_rate,
             dev_rate: rate,
             stereo: Vec::new(),
@@ -238,7 +240,7 @@ impl Feeder {
         }
     }
     pub fn set_track_gain(&mut self, g: f32) {
-        self.proc.track_gain = g;
+        self.track_gain = g;
     }
     pub fn src_rate(&self) -> u32 {
         self.rate
@@ -253,15 +255,17 @@ impl Feeder {
         if dev != self.dev_rate {
             self.dev_rate = dev;
             self.resampler = Resampler::new(self.rate, dev);
-            let g = self.proc.track_gain;
-            self.proc = Processor::new(dev);
-            self.proc.track_gain = g;
         }
         self.stereo.clear();
         super::dsp::to_stereo(samples, channels, &mut self.stereo);
         self.resampled.clear();
         self.resampler.process(&self.stereo, &mut self.resampled);
-        self.proc.process(&self.out.s.dsp, &mut self.resampled);
+        if (self.track_gain - 1.0).abs() > 1e-4 {
+            let g = self.track_gain;
+            for s in self.resampled.iter_mut() {
+                *s *= g;
+            }
+        }
         let gen = self.gen;
         let out = self.out.clone();
         out.push(gen, &self.resampled)
@@ -335,22 +339,24 @@ fn open_stream(s: &Arc<Shared>, device: &str) -> anyhow::Result<cpal::Stream> {
         *s3.device_error.lock().unwrap() = Some(e.to_string());
     };
     let mut scratch: Vec<f32> = Vec::new();
+    // one EQ state per stream (device rate); moved into the callback below
+    let mut proc = Processor::new(config.sample_rate);
     let stream = match fmt {
         cpal::SampleFormat::F32 => dev.build_output_stream::<f32, _, _>(
             config,
-            move |data: &mut [f32], _| fill(&s2, data, channels, &mut scratch, |x| x),
+            move |data: &mut [f32], _| fill(&s2, data, channels, &mut scratch, &mut proc, |x| x),
             err_cb,
             None,
         )?,
         cpal::SampleFormat::I16 => dev.build_output_stream::<i16, _, _>(
             config,
-            move |data: &mut [i16], _| fill(&s2, data, channels, &mut scratch, |x| (x.clamp(-1.0, 1.0) * 32767.0) as i16),
+            move |data: &mut [i16], _| fill(&s2, data, channels, &mut scratch, &mut proc, |x| (x.clamp(-1.0, 1.0) * 32767.0) as i16),
             err_cb,
             None,
         )?,
         cpal::SampleFormat::I32 => dev.build_output_stream::<i32, _, _>(
             config,
-            move |data: &mut [i32], _| fill(&s2, data, channels, &mut scratch, |x| (x.clamp(-1.0, 1.0) as f64 * 2147483647.0) as i32),
+            move |data: &mut [i32], _| fill(&s2, data, channels, &mut scratch, &mut proc, |x| (x.clamp(-1.0, 1.0) as f64 * 2147483647.0) as i32),
             err_cb,
             None,
         )?,
@@ -361,7 +367,7 @@ fn open_stream(s: &Arc<Shared>, device: &str) -> anyhow::Result<cpal::Stream> {
 }
 
 /// Real-time callback body.
-fn fill<T: Copy + Default>(s: &Shared, data: &mut [T], channels: usize, scratch: &mut Vec<f32>, conv: impl Fn(f32) -> T) {
+fn fill<T: Copy + Default>(s: &Shared, data: &mut [T], channels: usize, scratch: &mut Vec<f32>, proc: &mut Processor, conv: impl Fn(f32) -> T) {
     let frames = data.len() / channels.max(1);
     scratch.clear();
     scratch.resize(frames * 2, 0.0);
@@ -376,6 +382,10 @@ fn fill<T: Copy + Default>(s: &Shared, data: &mut [T], channels: usize, scratch:
             got = n / 2;
         }
         s.consumed.fetch_add(got as u64, Ordering::Relaxed);
+    }
+    // EQ / bass / preamp / balance on what is about to be heard (live settings)
+    if got > 0 {
+        proc.process(&s.dsp, &mut scratch[..got * 2]);
     }
     // visualizer tap (pre-volume, mono)
     if s.vis_enabled.load(Ordering::Relaxed) && got > 0 {
@@ -420,5 +430,66 @@ fn fill<T: Copy + Default>(s: &Shared, data: &mut [T], channels: usize, scratch:
     }
     if let Ok(mut cg) = s.current_gain.try_lock() {
         *cg = g;
+    }
+}
+
+#[cfg(test)]
+mod live_dsp_tests {
+    use super::*;
+
+    fn shared() -> Shared {
+        Shared {
+            ring: Mutex::new(VecDeque::new()),
+            capacity: AtomicU64::new(1 << 20),
+            volume: AtomicU32::new(1.0f32.to_bits()),
+            muted: AtomicBool::new(false),
+            fade_target: AtomicU32::new(1.0f32.to_bits()),
+            fade_ms: AtomicU32::new(0),
+            paused: AtomicBool::new(false),
+            consumed: AtomicU64::new(0),
+            pushed: AtomicU64::new(0),
+            device_rate: AtomicU32::new(48_000),
+            vis_enabled: AtomicBool::new(false),
+            vis: Mutex::new(VecDeque::new()),
+            generation: AtomicU64::new(0),
+            dsp: SharedDsp::new(),
+            device_error: Mutex::new(None),
+            device_name: Mutex::new(String::new()),
+            current_gain: Mutex::new(1.0),
+        }
+    }
+
+    /// A setting change applies to the very next callback, even with a full
+    /// buffer of audio already queued (it used to wait until that buffer drained).
+    #[test]
+    fn eq_changes_apply_to_the_next_callback() {
+        let s = shared();
+        // 1 s of audio already buffered
+        s.ring.lock().unwrap().extend(std::iter::repeat_n(0.1f32, 48_000 * 2));
+        let mut proc = Processor::new(48_000);
+        let mut scratch = Vec::new();
+        let mut out = vec![0f32; 512 * 2];
+        fill(&s, &mut out, 2, &mut scratch, &mut proc, |x| x);
+        assert!((out[100] - 0.1).abs() < 1e-4, "flat: {}", out[100]);
+        // user drags the preamp to +6 dB
+        s.dsp.set(super::super::dsp::DspParams { preamp_db: 6.0206, ..Default::default() });
+        fill(&s, &mut out, 2, &mut scratch, &mut proc, |x| x);
+        assert!((out[100] - 0.2).abs() < 1e-3, "+6 dB heard immediately: {}", out[100]);
+        // bass boost on a low tone changes the very next buffer too
+        let s = shared();
+        let tone: Vec<f32> = (0..48_000).flat_map(|i| {
+            let v = (2.0 * std::f32::consts::PI * 60.0 * i as f32 / 48_000.0).sin() * 0.2;
+            [v, v]
+        }).collect();
+        s.ring.lock().unwrap().extend(tone.iter().copied());
+        let mut proc = Processor::new(48_000);
+        let rms = |b: &[f32]| (b.iter().map(|x| x * x).sum::<f32>() / b.len() as f32).sqrt();
+        let mut out = vec![0f32; 4800 * 2];
+        fill(&s, &mut out, 2, &mut scratch, &mut proc, |x| x);
+        let before = rms(&out);
+        s.dsp.set(super::super::dsp::DspParams { bass_on: true, bass_db: 9.0, ..Default::default() });
+        fill(&s, &mut out, 2, &mut scratch, &mut proc, |x| x);
+        let after = rms(&out);
+        assert!(after > before * 1.8, "60 Hz louder right away: {before} → {after}");
     }
 }

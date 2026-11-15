@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.7.2 — 2026-11-15
+
+### Fixed
+- **EQ, bass boost, preamp and balance now change the sound immediately.** They used to run
+  in the decoder, before the ~0.5 s playback buffer, so every change was heard only after
+  the buffer drained. They now run in the audio callback on what is about to be heard,
+  picking up new settings without blocking (`try_lock`). Per-track ReplayGain stays with
+  the track's samples. Test: a +6 dB preamp and a 9 dB bass boost on a 60 Hz tone change
+  the very next buffer, with a full second of audio already queued.
+
+### Changed
+- Settings › Audio and Quick settings now state that Spotify songs played through Spotify
+  Soloist aren't affected by Aqua Glass' EQ, bass, balance, preamp or visualizer: Soloist
+  outputs its audio straight to Windows. The provider table says the same.
+
 ## 0.7.1 — 2026-11-15
 
 ### Fixed

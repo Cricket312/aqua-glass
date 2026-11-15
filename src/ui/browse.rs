@@ -719,6 +719,9 @@ pub fn quick_settings(app: &mut AquaApp, ui: &mut Ui) {
             });
         }
     }
+    if app.cfg.services.spotify_backend == crate::config::SpotifyBackend::Soloist {
+        ui.label(RichText::new("EQ and visualizer affect local files only — Spotify Soloist outputs its audio directly.").small().weak());
+    }
     ui.separator();
     ui.horizontal(|ui| {
         for p in [crate::features::Preset::Minimal, crate::features::Preset::Balanced, crate::features::Preset::Enhanced] {

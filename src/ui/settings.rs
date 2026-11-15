@@ -705,7 +705,15 @@ const EQ_PRESETS: &[(&str, [f32; 10])] = &[
     ("Loudness", [5.0, 3.0, 0.0, 0.0, -1.0, 0.0, -0.5, -2.0, 3.0, 2.0]),
 ];
 
+/// EQ/bass/balance/preamp only reach audio that Aqua Glass itself outputs.
+pub fn soloist_audio_note(app: &AquaApp, ui: &mut Ui) {
+    if app.cfg.services.spotify_enabled && app.cfg.services.spotify_backend == crate::config::SpotifyBackend::Soloist {
+        widgets::warn(ui, "Spotify songs play through Spotify Soloist, which sends its audio straight to Windows — Aqua Glass' EQ, bass boost, balance, preamp and visualizer can't change them. These settings affect local files (instantly, while you adjust them).");
+    }
+}
+
 fn audio(app: &mut AquaApp, ui: &mut Ui) {
+    soloist_audio_note(app, ui);
     let mut d = false;
     ui.horizontal(|ui| {
         ui.label("Output device");
@@ -770,10 +778,10 @@ fn audio(app: &mut AquaApp, ui: &mut Ui) {
         ui.label(RichText::new("Local files").strong());
         ui.end_row();
         for (f, s, l) in [
-            ("EQ, bass, balance, visualizer", "✔", "✔"),
-            ("Normalization", "✔ Spotify gain data", "✔ ReplayGain tags"),
-            ("Gapless", "✔", "✔"),
-            ("Quality setting", "✔ 96/160/320", "original file"),
+            ("EQ, bass, balance, visualizer", "✔ librespot only (✖ Soloist)", "✔"),
+            ("Normalization", "✔ librespot only (✖ Soloist)", "✔ ReplayGain tags"),
+            ("Gapless", "✔ librespot only (✖ Soloist)", "✔"),
+            ("Quality setting", "✔ librespot 96/160/320 (Soloist: Spotify's own)", "original file"),
             ("Crossfade", "✖ not implemented", "✖ not implemented"),
             ("Exclusive (WASAPI) output", "✖ not supported by the audio backend", "✖"),
         ] {
