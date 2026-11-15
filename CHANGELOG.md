@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.1 — 2026-11-15
+
+### Fixed
+- **Crash right after signing in to Spotify** (found with the 0.4.1 crash report): connecting
+  Spotify playback panicked with "there is no reactor running". librespot's `Session::new`
+  needs the Tokio runtime context and was created outside it. This affected every
+  Spotify playback connection, with or without your own Client ID. The session is now
+  created inside the runtime. Player commands and shutdown also run inside it, and the
+  runtime is dropped last.
+- Added a regression test that connects playback with a dummy token: it reproduced the
+  exact panic before the fix, and now fails cleanly while the engine keeps working.
+
 ## 0.6.0 — 2026-11-15 (YouTube Music removed)
 
 ### Removed

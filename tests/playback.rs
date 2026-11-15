@@ -102,6 +102,24 @@ fn engine_handles_spotify_without_session() {
     engine.send(Cmd::Shutdown);
 }
 
+/// Regression (0.6.1): connecting Spotify playback crashed the engine thread with
+/// "there is no reactor running" because librespot's Session was created outside its
+/// Tokio runtime. With a dummy token (and no route to Spotify in CI) the connection
+/// must now *fail cleanly* and the engine must keep working.
+#[test]
+fn spotify_connect_fails_cleanly_instead_of_crashing() {
+    aqua_glass::services::install_crypto();
+    let out = Output::start("", 300);
+    let engine = Engine::start(out, EngineOpts::default(), 0.5, false, Box::new(|| {}));
+    engine.send(Cmd::SpotifyConnect(std::sync::Arc::new(|| Ok("dummy-token".to_string()))));
+    let done = wait_until(Duration::from_secs(90), || matches!(engine.snapshot().spotify, aqua_glass::audio::engine::SpotifyStatus::Unavailable(_) | aqua_glass::audio::engine::SpotifyStatus::Ready));
+    assert!(done, "connect attempt finished (engine thread alive), status: {:?}", engine.snapshot().spotify);
+    // the engine still answers commands afterwards
+    engine.send(Cmd::SetVolume(0.3));
+    assert!(wait_until(Duration::from_secs(3), || (engine.snapshot().volume - 0.3).abs() < 0.01), "engine still responsive");
+    engine.send(Cmd::Shutdown);
+}
+
 #[test]
 fn plays_every_track_in_order() {
     sequence(true);

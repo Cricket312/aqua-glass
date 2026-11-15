@@ -39,11 +39,13 @@ impl Sink for AquaSink {
 }
 
 pub struct SpotifyPlayer {
-    rt: tokio::runtime::Runtime,
     session: Session,
     player: Arc<Player>,
     /// Generation the sink should tag its data with (updated after flushes).
     pub gen: Arc<AtomicU64>,
+    /// Declared last so it is dropped last: the session and player shut down
+    /// while their runtime still exists.
+    rt: tokio::runtime::Runtime,
 }
 
 pub struct PlayerOpts {
@@ -55,7 +57,12 @@ pub struct PlayerOpts {
 impl SpotifyPlayer {
     pub fn connect(token: &str, out: &Output, opts: &PlayerOpts, events: mpsc::Sender<EngineEvent>) -> anyhow::Result<SpotifyPlayer> {
         let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(1).thread_name("spotify").enable_all().build()?;
-        let session = Session::new(SessionConfig::default(), None);
+        // librespot's Session::new captures the current Tokio runtime handle, so it
+        // must be created inside the runtime context (it panicked here before 0.6.1).
+        let session = {
+            let _g = rt.enter();
+            Session::new(SessionConfig::default(), None)
+        };
         rt.block_on(session.connect(Credentials::with_access_token(token), false))
             .map_err(|e| anyhow::anyhow!("Spotify playback sign-in failed: {e}. Playback requires Spotify Premium."))?;
         let gen = Arc::new(AtomicU64::new(out.generation()));
@@ -96,7 +103,7 @@ impl SpotifyPlayer {
                 }
             }
         });
-        Ok(SpotifyPlayer { rt, session, player, gen })
+        Ok(SpotifyPlayer { session, player, gen, rt })
     }
 
     pub fn is_valid(&self) -> bool {
@@ -118,21 +125,26 @@ impl SpotifyPlayer {
     }
 
     pub fn play(&self) {
+        let _g = self.rt.enter();
         self.player.play();
     }
     pub fn pause(&self) {
+        let _g = self.rt.enter();
         self.player.pause();
     }
     pub fn stop(&self) {
+        let _g = self.rt.enter();
         self.player.stop();
     }
     pub fn seek(&self, ms: u32) {
+        let _g = self.rt.enter();
         self.player.seek(ms);
     }
 }
 
 impl Drop for SpotifyPlayer {
     fn drop(&mut self) {
+        let _g = self.rt.enter();
         self.player.stop();
         self.session.shutdown();
     }
