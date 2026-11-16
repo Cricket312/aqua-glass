@@ -27,20 +27,22 @@ pub fn shell(app: &mut AquaApp, ui: &mut Ui) {
         .frame(egui::Frame::new().fill(sidebar_fill).stroke(egui::Stroke::new(1.0, border)).inner_margin(egui::Margin::symmetric(18, 8)))
         .show(ui, |ui| player_bar(app, ui));
     let collapsed = app.cfg.general.sidebar_collapsed;
-    egui::Panel::left("sidebar")
+    let side = egui::Panel::left("sidebar")
         .resizable(!collapsed)
         .exact_size(if collapsed { 68.0 } else { app.cfg.general.sidebar_width.max(200.0) })
         .frame(egui::Frame::new().fill(sidebar_fill).stroke(egui::Stroke::new(1.0, border.gamma_multiply(0.6))).inner_margin(egui::Margin::symmetric(if collapsed { 10 } else { 14 }, 14)))
-        .show(ui, |ui| {
-            if !collapsed {
-                let w = ui.available_width() + 28.0;
-                if (w - app.cfg.general.sidebar_width).abs() > 2.0 && ui.input(|i| !i.pointer.any_down()) {
-                    app.cfg.general.sidebar_width = w.clamp(200.0, 360.0);
-                    app.mark_dirty();
-                }
-            }
-            sidebar(app, ui, collapsed)
-        });
+        .show(ui, |ui| sidebar(app, ui, collapsed));
+    if !collapsed {
+        // Remember a width the user dragged to. Measured from the panel's own outer
+        // rect — the same quantity `exact_size` sets — and compared after clamping:
+        // inner width + margins came out 3 px short, so the stored width shrank every
+        // frame and settings were marked changed on every frame (never saved).
+        let w = side.response.rect.width().clamp(200.0, 360.0);
+        if (w - app.cfg.general.sidebar_width).abs() > 2.0 && ui.input(|i| !i.pointer.any_down()) {
+            app.cfg.general.sidebar_width = w;
+            app.mark_dirty();
+        }
+    }
     if app.cfg.general.right_panel != RightPanel::Closed {
         egui::Panel::right("right_panel")
             .resizable(true)

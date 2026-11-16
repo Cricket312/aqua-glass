@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.9.1 — 2026-11-16 (EQ controls that silently did nothing; settings never saved while running)
+
+Investigated with a local file playing in the real app (Settings › Audio driven with
+xdotool, device output recorded from the PulseAudio monitor and measured by FFT). The DSP
+itself worked; two bugs sat around it.
+
+### Fixed
+- **EQ presets, band sliders and the bass-boost amount did nothing out of the box.** They
+  only reach the audio while the *Equalizer* / *Bass Boost* switches (under "Optional
+  audio processing", further down the page) are on, and every preset ships with both off.
+  Recorded: clicking "Bass" changed the page but not the output (62 Hz stayed at −21.94 dB).
+  Now adjusting a band, choosing a preset other than Flat, or moving the bass-boost amount
+  turns the matching switch on, with a toast saying so. It goes through the normal toggle
+  path, so the RAM-warning confirmation still applies. The page itself is unchanged. Pre-amp
+  and balance were never gated and worked already.
+- **Settings were only saved on a clean exit.** The sidebar-width tracker measured the
+  panel's inner width + margins, which came out 3 px short of the width it had set. The
+  stored width shrank by 3 px per frame down to the 200 px minimum and then marked the
+  settings as changed on every frame. The 800 ms "save after changes stop" never fired, so
+  a crash, kill or shutdown lost every change since start-up, EQ included. It now measures
+  the panel's outer width, the same quantity it sets. Idle, settings are no longer marked
+  changed.
+
+### Verified (local file, real GUI)
+- Bass preset: +5.53 dB at 62 Hz. Bass boost: a further rise matching the engine's curve
+  (predicted vs measured +15.64 dB at 62 Hz for preset + 11 dB shelf). Balance 0.15: left
+  −1.41 dB.
+- After `kill -9` and a restart the settings file had `eq = true`, `bass_boost = true`, the
+  preset, bass amount and balance, and the recorded output was identical.
+
 ## 0.9.0 — 2026-11-16 (built-in EQ; Equalizer APO integration removed)
 
 ### Changed

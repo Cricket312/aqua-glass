@@ -760,8 +760,11 @@ fn audio(app: &mut AquaApp, ui: &mut Ui) {
     slider_u(ui, "Audio buffer (ms)", &mut app.cfg.audio.buffer_ms, 100..=3000, &mut d);
     slider_f(ui, "Stereo balance (L ↔ R)", &mut app.cfg.audio.balance, -1.0..=1.0, &mut d);
     slider_f(ui, "Pre-amp (dB)", &mut app.cfg.audio.preamp_db, -12.0..=6.0, &mut d);
-    slider_f(ui, "Bass boost amount (dB)", &mut app.cfg.audio.bass_db, 0.0..=15.0, &mut d);
+    let mut bass_moved = false;
+    slider_f(ui, "Bass boost amount (dB)", &mut app.cfg.audio.bass_db, 0.0..=15.0, &mut bass_moved);
+    d |= bass_moved;
     headroom_hint(app, ui);
+    let mut eq_moved = false;
     widgets::section(ui, "Equalizer");
     ui.horizontal_wrapped(|ui| {
         for (name, g) in EQ_PRESETS {
@@ -769,6 +772,7 @@ fn audio(app: &mut AquaApp, ui: &mut Ui) {
                 app.cfg.audio.eq_preset = name.to_string();
                 app.cfg.audio.eq_gains_db = *g;
                 d = true;
+                eq_moved |= *name != "Flat";
             }
         }
     });
@@ -778,12 +782,22 @@ fn audio(app: &mut AquaApp, ui: &mut Ui) {
                 if ui.add(egui::Slider::new(&mut app.cfg.audio.eq_gains_db[i], -12.0..=12.0).vertical().show_value(false)).changed() {
                     app.cfg.audio.eq_preset = "Custom".into();
                     d = true;
+                    eq_moved = true;
                 }
                 ui.label(RichText::new(if *f >= 1000.0 { format!("{}k", f / 1000.0) } else { format!("{f}") }).small());
                 ui.label(RichText::new(format!("{:+.0}", app.cfg.audio.eq_gains_db[i])).small().weak());
             });
         }
     });
+    // The bands and the bass amount only reach the audio while their feature
+    // switch (below) is on — and both start off. Adjusting them is a clear
+    // request to hear it, so switch the feature on instead of silently ignoring it.
+    if eq_moved {
+        switch_on_for_adjustment(app, "eq");
+    }
+    if bass_moved {
+        switch_on_for_adjustment(app, "bass_boost");
+    }
     if d {
         app.mark_dirty();
     }
@@ -809,6 +823,19 @@ fn audio(app: &mut AquaApp, ui: &mut Ui) {
             ui.end_row();
         }
     });
+}
+
+/// Turn on an audio feature because the user just adjusted its setting (goes
+/// through `request_toggle`, so the RAM-warning confirmation still applies).
+fn switch_on_for_adjustment(app: &mut AquaApp, id: &str) {
+    if app.cfg.on(id) {
+        return;
+    }
+    app.request_toggle(id, true);
+    if app.cfg.on(id) {
+        let name = crate::features::get(id).map(|f| f.name).unwrap_or(id);
+        app.toast(format!("{name} turned on (Optional audio processing below)."), false);
+    }
 }
 
 /// How far the EQ + bass curve peaks above the pre-amp. Nothing is lowered
