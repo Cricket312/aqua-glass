@@ -3,7 +3,7 @@ members = ["crates/aqua-core", "crates/aqua-providers", "crates/aqua-radio"]
 resolver = "2"
 
 [workspace.package]
-version = "0.7.3"
+version = "0.7.4"
 edition = "2021"
 rust-version = "1.85"
 license = "MIT"
@@ -30,11 +30,9 @@ rust-version.workspace = true
 license.workspace = true
 
 [features]
-default = ["spotify-playback", "discord", "local-files"]
+default = ["spotify-playback", "local-files"]
 # librespot-based Spotify Premium playback. Without it, Spotify library/sync/transfer still work.
 spotify-playback = ["dep:librespot-core", "dep:librespot-playback", "dep:librespot-metadata"]
-# Discord Rich Presence IPC client.
-discord = ["dep:discord-rich-presence"]
 # Local audio file playback (symphonia decoders).
 local-files = ["dep:symphonia"]
 # Screen-reader support (adds AccessKit; costs a few MB).
@@ -69,7 +67,6 @@ simplelog = "0.12"
 librespot-core = { version = "0.8.0", default-features = false, features = ["rustls-tls-webpki-roots"], optional = true }
 librespot-playback = { version = "0.8.0", default-features = false, features = ["rustls-tls-webpki-roots"], optional = true }
 librespot-metadata = { version = "0.8.0", default-features = false, features = ["rustls-tls-webpki-roots"], optional = true }
-discord-rich-presence = { version = "1.1", optional = true }
 symphonia = { version = "0.5", default-features = false, features = ["mp3", "flac", "vorbis", "ogg", "wav", "pcm", "aac", "isomp4"], optional = true }
 cpal = "0.18.2"
 # WebSocket client for Spotify Soloist's local API (plain ws:// on 127.0.0.1, no TLS needed)

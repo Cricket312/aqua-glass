@@ -279,7 +279,7 @@ part of the queue in the background and refilled when fewer than 5 remain.
 Open settings with the always-visible **⚙ Settings** button, `Ctrl+,`, the tray menu, the
 ☰ application menu, or the ⚡ quick-settings button. The last category is remembered, and
 the search box finds settings by name, description, category or keywords — e.g. "RAM",
-"lyrics", "Discord", "background".
+"lyrics", "equalizer", "background".
 
 Every optional feature (78 of them) has its own toggle, description, dependency info and a
 RAM badge:
@@ -320,7 +320,7 @@ RAM badge:
   a local file; nothing is uploaded.
 * Network access only to: Spotify (accounts/api/CDN/access points), image CDNs for
   artwork, Last.fm (Similarity Radio, when a key is set) and lrclib.net for lyrics (when Lyrics is on:
-  sends title, artist, album, duration). Discord presence uses only the local Discord IPC pipe.
+  sends title, artist, album, duration).
   The full table is in Settings → Privacy.
 * OAuth refresh tokens and the Last.fm key are stored in **Windows Credential
   Manager** (`AquaGlass/...`), never in files, logs or exports. Error messages are scrubbed
@@ -355,7 +355,6 @@ toggles only stop them):
 | Feature | Default | Contents |
 |---|---|---|
 | `spotify-playback` | ✔ | librespot (Spotify Premium playback) |
-| `discord` | ✔ | Discord Rich Presence IPC |
 | `local-files` | ✔ | symphonia decoders for local files |
 | `accessibility` | ✖ | AccessKit screen-reader support |
 
@@ -382,7 +381,7 @@ scripts/check-portable.sh        # portable crates have no UI/audio/OS deps; aqu
   corrupted cache, track matching (live/remix/cover/remaster/feat.), JSON/CSV/M3U
   round-trips, transfer planning/execution with a fake service, queue logic incl. a
   20,000-track shuffle, DSP (EQ gain at 1 kHz, bass shelf, balance, resampler),
-  lyrics parsing (LRC, offsets, word timing), visualizer FFT, Discord presence content.
+  lyrics parsing (LRC, offsets, word timing), visualizer FFT.
 * `tests/radio_e2e.rs` runs the real engine, audio output, library store and radio worker:
   radio starts from a played song, fills to 15, a manually queued song plays before the
   recommendations, the queue refills before running out, no duplicates, Stop clears only
@@ -436,7 +435,6 @@ src/                 Windows desktop app
   theme.rs           declarative TOML themes → egui style
   shortcuts.rs       actions, binding parser, conflict detection
   artwork.rs         downscaling image loader, LRU texture cache with byte budget, blur
-  discord.rs         Rich Presence worker (exists only while enabled)
   winint.rs          tray, SMTC media controls, global hotkeys, autostart, toasts, acrylic
   model/history/library/matching/radio/services.rs   re-exports of the portable crates
   audio/
@@ -455,13 +453,13 @@ Key decisions:
 * **One audio pipeline.** librespot's decoded PCM goes through a custom `Sink` into the
   same output, DSP and visualizer tap as local files.
 * **Playback is independent of the UI.** The engine runs on its own thread, so queue
-  advance, media keys, tray actions, Discord and notifications keep working while the
+  advance, media keys, tray actions and notifications keep working while the
   window is minimized or hidden. `App::logic` processes background messages even when the
   window is hidden.
 * **Repaint only on change.** Idle UI does not redraw; playback repaints twice a second for
   the progress bar; only visible animations (visualizer, animated background, transitions)
   request higher frame rates.
-* **Everything optional is lazily created and dropped**: Discord thread, tray, hotkey
+* **Everything optional is lazily created and dropped**: tray, hotkey
   registrations, media controls, analyzer, background textures, overlay/mini windows.
 
 ## Known limitations
@@ -496,7 +494,5 @@ Honest list of what is not done or not verified:
   than Now Playing / player bar.
 * The "Windows 11 Acrylic Backdrop" depends on the GPU driver supporting a transparent
   OpenGL surface; it is experimental and needs a restart.
-* Discord Rich Presence needs a Discord Application ID you create (free) — Aqua Glass
-  doesn't ship one.
 * Notifications use the PowerShell AppUserModelID because the portable exe isn't
   registered with Windows; the toast therefore shows "Windows PowerShell" as the source.

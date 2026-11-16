@@ -194,3 +194,6 @@ The +0.3 MB difference is within run-to-run variation. Under Wine these numbers 
 Wine's own allocations, so compare only the two builds with each other. Neither is the
 native Windows figure; see the Linux numbers above for the app's own footprint. The
 200 MB target is unchanged.
+
+> Discord Rich Presence was removed in 0.7.4. The rows above that mention it are kept as
+> historical measurements.

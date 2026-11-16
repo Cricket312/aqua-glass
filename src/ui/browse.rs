@@ -708,7 +708,7 @@ pub fn save_queue_as_playlist(app: &mut AquaApp) {
 pub fn quick_settings(app: &mut AquaApp, ui: &mut Ui) {
     ui.set_min_width(260.0);
     ui.label(RichText::new("Quick settings").strong());
-    for id in ["similarity_radio", "lyrics", "visualizer", "bg_album_art", "bg_blur", "bg_animated", "eq", "discord", "overlay"] {
+    for id in ["similarity_radio", "lyrics", "visualizer", "bg_album_art", "bg_blur", "bg_animated", "eq", "overlay"] {
         if let Some(f) = crate::features::get(id) {
             let mut v = app.cfg.on(id);
             ui.horizontal(|ui| {

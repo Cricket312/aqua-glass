@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.4 — 2026-11-16
+
+### Removed
+- **Discord Rich Presence:** the module, its settings category and toggles, the Application
+  ID setting and the `discord-rich-presence` dependency. Older settings files with Discord
+  options load normally; those options are dropped.
+
+### Added
+- **Equalizer APO: "Only while Aqua Glass is playing"** (on by default). Equalizer APO works
+  on the whole output device after Windows mixes all apps, so it can't single out one
+  program. With this option the EQ is applied while Aqua Glass plays and set to flat
+  when you pause or stop, so other apps are affected only while your music plays.
+
 ## 0.7.3 — 2026-11-16 (EQ for Spotify through Equalizer APO)
 
 ### Added

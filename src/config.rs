@@ -166,6 +166,9 @@ pub struct Audio {
     pub eq_engine: EqEngine,
     /// With Equalizer APO: reset Aqua Glass' EQ to flat when Aqua Glass closes.
     pub apo_flat_on_exit: bool,
+    /// With Equalizer APO: EQ only while Aqua Glass is playing (flat when paused),
+    /// so other apps on the device are affected as little as possible.
+    pub apo_only_while_playing: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -189,6 +192,7 @@ impl Default for Audio {
             preamp_db: 0.0,
             eq_engine: EqEngine::AquaGlass,
             apo_flat_on_exit: true,
+            apo_only_while_playing: true,
         }
     }
 }
@@ -310,8 +314,6 @@ pub struct ServicesCfg {
     pub spotify_client_id: String,
     pub spotify_redirect_port: u16,
     pub local_folders: Vec<String>,
-    /// Discord application id used for Rich Presence (not a secret).
-    pub discord_app_id: String,
     /// Which program plays Spotify audio.
     pub spotify_backend: SpotifyBackend,
     /// Full path to soloist.exe (downloaded by the user from Spotify; never bundled).
@@ -351,7 +353,6 @@ impl Default for ServicesCfg {
             spotify_client_id: String::new(),
             spotify_redirect_port: 8898,
             local_folders: Vec::new(),
-            discord_app_id: String::new(),
             spotify_backend: SpotifyBackend::Soloist,
             soloist_path: String::new(),
             soloist_device_name: "Aqua Glass".into(),
@@ -780,6 +781,17 @@ mod tests {
         assert_eq!(c.radio.provider, crate::radio::RadioProvider::Automatic);
         assert_eq!(c.radio.target, 20);
         assert!(!c.to_toml_string().contains("youtube"));
+    }
+
+    #[test]
+    fn pre_074_discord_settings_are_dropped_cleanly() {
+        let old = "version = 2\n[services]\ndiscord_app_id = \"123\"\nspotify_client_id = \"keep\"\n[features]\ndiscord = true\ndiscord_title = true\nlyrics = true\n";
+        let c = Config::from_toml_str(old).expect("loads");
+        assert_eq!(c.services.spotify_client_id, "keep");
+        assert!(c.on("lyrics"));
+        let out = c.to_toml_string();
+        assert!(!out.contains("discord"), "{out}");
+        assert!(c.audio.apo_only_while_playing, "new option defaults on");
     }
 
     #[test]

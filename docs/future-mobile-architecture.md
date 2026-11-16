@@ -85,7 +85,7 @@ Unchanged behaviour:
 
 `scripts/check-portable.sh` verifies two things:
 
-1. The three crates don't depend on any UI, audio output or OS crate: eframe/egui/winit, cpal, librespot, symphonia, windows, winreg, keyring, tray-icon, souvlaki, global-hotkey, rfd, discord-rich-presence or open.
+1. The three crates don't depend on any UI, audio output or OS crate: eframe/egui/winit, cpal, librespot, symphonia, windows, winreg, keyring, tray-icon, souvlaki, global-hotkey, rfd or open.
 2. `aqua-core` compiles for `aarch64-linux-android`. **Verified.**
 
 `aqua-providers` and `aqua-radio` are plain Rust, but their TLS stack (`ring`) compiles C code. Checking them for Android needs the NDK (`cargo ndk -t arm64-v8a check -p aqua-radio`). That wasn't available in the build environment, so it is **not yet verified**.
@@ -101,7 +101,7 @@ These modules remain in the root package (`src/`):
 | `audio/engine.rs` | The Windows `PlaybackControl` implementation: a thread, gapless chaining and backends. |
 | `audio/spotify.rs` | librespot playback. See section 5 for why this doesn't carry over to Android. |
 | `audio/local.rs` | symphonia decoding. Portable, but tied to the output pipeline. |
-| `winint.rs`, `shortcuts.rs`, `discord.rs` | Tray, Windows media controls (SMTC), global hotkeys, autostart, toasts, DWM, Discord IPC. |
+| `winint.rs`, `shortcuts.rs` | Tray, Windows media controls (SMTC), global hotkeys, autostart, toasts, DWM. |
 | `security.rs` | Windows Credential Manager adapter. |
 | `perf.rs`, `features.rs`, `theme.rs`, `artwork.rs`, `config.rs` | Desktop RAM dashboard, feature registry, egui theme engine, egui texture cache, desktop config. Config converts to and from the portable models (`Config::radio_prefs`, `syncprep::settings_state`). |
 | `transfer.rs`, `ui/jobs.rs` (library sync) | Portable in substance, but not moved yet (see section 10). |

@@ -8,7 +8,7 @@ version = "0.25.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4e883d1d28c5fd5568c79ed2d2bd48d9f2fd3945c8974ed0f53690ceddb051be"
 dependencies = [
- "uuid 1.29.2",
+ "uuid",
 ]
 
 [[package]]
@@ -219,7 +219,7 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
 name = "aqua-core"
-version = "0.7.3"
+version = "0.7.4"
 dependencies = [
  "anyhow",
  "log",
@@ -230,7 +230,7 @@ dependencies = [
 
 [[package]]
 name = "aqua-glass"
-version = "0.7.3"
+version = "0.7.4"
 dependencies = [
  "anyhow",
  "aqua-core",
@@ -240,7 +240,6 @@ dependencies = [
  "cpal",
  "csv",
  "directories",
- "discord-rich-presence",
  "eframe",
  "egui",
  "global-hotkey",
@@ -276,7 +275,7 @@ dependencies = [
 
 [[package]]
 name = "aqua-providers"
-version = "0.7.3"
+version = "0.7.4"
 dependencies = [
  "anyhow",
  "aqua-core",
@@ -293,7 +292,7 @@ dependencies = [
 
 [[package]]
 name = "aqua-radio"
-version = "0.7.3"
+version = "0.7.4"
 dependencies = [
  "anyhow",
  "aqua-core",
@@ -1273,21 +1272,6 @@ dependencies = [
  "option-ext",
  "redox_users",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "discord-rich-presence"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "90c55d69cab17c19677ce3a5f8face993a9e6eaf847fecac3547f3a3ff4a2494"
-dependencies = [
- "log",
- "serde",
- "serde_derive",
- "serde_json",
- "serde_repr",
- "thiserror 2.0.21",
- "uuid 0.8.2",
 ]
 
 [[package]]
@@ -3029,7 +3013,7 @@ dependencies = [
  "tokio-tungstenite",
  "tokio-util",
  "url",
- "uuid 1.29.2",
+ "uuid",
  "vergen-gitcl",
 ]
 
@@ -3048,7 +3032,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.21",
- "uuid 1.29.2",
+ "uuid",
 ]
 
 [[package]]
@@ -6254,15 +6238,6 @@ checksum = "3a3b425286980a367278453f3b6d28cdcb134b574e5a35824a6ff5eebad50bb6"
 
 [[package]]
 name = "uuid"
-version = "0.8.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
-dependencies = [
- "getrandom 0.2.17",
-]
-
-[[package]]
-name = "uuid"
 version = "1.29.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bed99139f7dac9b5cfe5f17be4d66dc7079a34dee1d74bcc77217119240e267c"
@@ -7469,7 +7444,7 @@ dependencies = [
  "serde_repr",
  "tracing",
  "uds_windows",
- "uuid 1.29.2",
+ "uuid",
  "windows-sys 0.61.2",
  "winnow 1.0.5",
  "zbus_macros",

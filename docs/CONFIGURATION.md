@@ -130,20 +130,6 @@ preset applies.
 | `vis_reduced_motion` | Reduced Motion | LOW | +0–0.1 MB | `visualizer` |  |  |  |  |  |
 | `vis_in_bar` | Visualizer in Player Bar | LOW | +0–1 MB | `visualizer` | ✔ |  |  |  | ✔ |
 
-### Discord
-
-| id | Name | RAM impact | Estimate | Requires | Visual | Min | Bal | Enh | Full |
-|---|---|---|---|---|---|---|---|---|---|
-| `discord` | Discord Rich Presence | LOW | +1–4 MB |  |  |  |  |  |  |
-| `discord_title` | Show Song Title | LOW | +0–0 MB | `discord` |  | ✔ | ✔ | ✔ | ✔ |
-| `discord_artist` | Show Artist | LOW | +0–0 MB | `discord` |  | ✔ | ✔ | ✔ | ✔ |
-| `discord_album` | Show Album | LOW | +0–0 MB | `discord` |  |  | ✔ | ✔ | ✔ |
-| `discord_artwork` | Show Album Artwork | LOW | +0–0 MB | `discord` |  |  | ✔ | ✔ | ✔ |
-| `discord_elapsed` | Show Elapsed Time | LOW | +0–0 MB | `discord` |  | ✔ | ✔ | ✔ | ✔ |
-| `discord_service` | Show Service Name | LOW | +0–0 MB | `discord` |  | ✔ | ✔ | ✔ | ✔ |
-| `discord_status` | Show Paused State | LOW | +0–0 MB | `discord` |  | ✔ | ✔ | ✔ | ✔ |
-| `discord_privacy` | Privacy Mode | LOW | +0–0 MB | `discord` |  |  |  |  |  |
-
 ### Keyboard Shortcuts
 
 | id | Name | RAM impact | Estimate | Requires | Visual | Min | Bal | Enh | Full |
@@ -196,12 +182,12 @@ preset applies.
 | `[appearance]` | `theme` (name), `font_path`, `player_bar_layout` (`Classic`/`Centered`/`Compact`), `player_bar_height` |
 | `[background]` | `image_path`, `blur_radius` (0–80), `dim` (0–1), `opacity` (0–1), `anim_speed`, `anim_fps` (5–60), `transition_ms`, `scale` (`Fill`/`Fit`/`Stretch`/`Center`), `parallax_px` |
 | `[playback]` | `preferred_provider`, `ask_when_both`, `volume`, `muted`, `shuffle`, `repeat` (`Off`/`All`/`One`), `quality` (`Low96`/`Normal160`/`High320`), `fade_ms`, `seek_step_s`, `volume_step` |
-| `[audio]` | `device` (empty = default), `eq_gains_db` (10 bands, ±12 dB at 31 Hz…16 kHz), `eq_preset`, `bass_db` (0–15), `balance` (−1…1), `buffer_ms` (100–3000), `preamp_db` |
+| `[audio]` | `device` (empty = default), `eq_gains_db` (10 bands, ±12 dB at 31 Hz…16 kHz), `eq_preset`, `bass_db` (0–15), `balance` (−1…1), `buffer_ms` (100–3000), `preamp_db`, `eq_engine` (`AquaGlass`/`EqualizerApo`), `apo_only_while_playing`, `apo_flat_on_exit` |
 | `[lyrics]` | `font_size`, `bold_current`, `color`, `highlight`, `align`, `line_spacing`, `bg_opacity`, `offset_ms` |
 | `[visualizer]` | `mode` (`Bars`/`Waveform`/`Circular`/`Minimal`), `fps`, `sensitivity`, `smoothing`, `bars`, `height`, `color_a`, `color_b` |
 | `[mini]` | `pos`, `size`, `opacity`, `layout` (`Horizontal`/`Square`/`Compact`) |
 | `[overlay]` | `pos`, `size`, `opacity`, `font_size`, `always_on_top` |
-| `[services]` | `spotify_enabled`, `local_enabled`, `spotify_client_id` (empty = librespot default), `spotify_redirect_port`, `local_folders`, `discord_app_id`. YouTube keys from before 0.6 are ignored |
+| `[services]` | `spotify_enabled`, `local_enabled`, `spotify_client_id` (empty = librespot default), `spotify_redirect_port`, `local_folders`, `spotify_backend` (`Soloist`/`Librespot`), `soloist_path`, `soloist_device_name`, `soloist_manage`, `soloist_data_dir`. YouTube keys (pre-0.6) and Discord keys (pre-0.7.4) are ignored |
 | `[sync]` | `interval_min` (5–1440), `include_followed_playlists` |
 | `[perf]` | `ram_target_mb` (default 200), `artwork_max_px`, `artwork_cache_mb`, `idle_fps_cap` |
 | `[shortcuts]` | action id → binding, e.g. `play_pause = "Ctrl+Alt+P"` |
@@ -280,15 +266,6 @@ close_to_tray = false
 custom_font = false
 custom_theme = true
 diagnostic_logging = false
-discord = false
-discord_album = true
-discord_artist = true
-discord_artwork = true
-discord_elapsed = true
-discord_privacy = false
-discord_service = true
-discord_status = true
-discord_title = true
 eq = false
 fades = true
 fps_counter = false
@@ -445,7 +422,6 @@ local_enabled = true
 spotify_client_id = ""
 spotify_redirect_port = 8898
 local_folders = []
-discord_app_id = ""
 
 [sync]
 interval_min = 60

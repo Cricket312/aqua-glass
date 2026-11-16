@@ -1,4 +1,4 @@
-//! Settings: searchable, 17 categories, a toggle + RAM rating for every
+//! Settings: searchable, 16 categories, a toggle + RAM rating for every
 //! optional feature, live performance dashboard, presets and theme editor.
 
 use super::widgets::{self, icon};
@@ -13,8 +13,6 @@ use eframe::egui::{self, RichText, Ui};
 pub struct SettingsUi {
     pub category: Category,
     pub search: String,
-    pub discord_app_id: String,
-    pub discord_opts_last: Option<crate::discord::DiscordOpts>,
     pub new_preset_name: String,
     pub rename_to: String,
     pub devices: Option<Vec<String>>,
@@ -34,9 +32,6 @@ impl Default for Category {
 }
 
 pub fn page(app: &mut AquaApp, ui: &mut Ui) {
-    if app.settings.discord_app_id.is_empty() && !app.cfg.services.discord_app_id.is_empty() {
-        app.settings.discord_app_id = app.cfg.services.discord_app_id.clone();
-    }
     ui.add_space(4.0);
     ui.horizontal(|ui| {
         ui.label(RichText::new("Settings").size(24.0).strong());
@@ -44,7 +39,7 @@ pub fn page(app: &mut AquaApp, ui: &mut Ui) {
         let fill = ui.visuals().faint_bg_color;
         egui::Frame::new().fill(fill).corner_radius(16).inner_margin(egui::Margin::symmetric(12, 4)).show(ui, |ui| {
             ui.label(RichText::new(icon::SEARCH()).color(ui.visuals().weak_text_color()));
-            ui.add(egui::TextEdit::singleline(&mut app.settings.search).frame(egui::Frame::NONE).hint_text("Search settings — e.g. RAM, lyrics, Discord, background, radio").desired_width(340.0));
+            ui.add(egui::TextEdit::singleline(&mut app.settings.search).frame(egui::Frame::NONE).hint_text("Search settings — e.g. RAM, lyrics, EQ, background, radio").desired_width(340.0));
         });
         if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
             app.settings.search.clear();
@@ -111,7 +106,6 @@ pub fn page(app: &mut AquaApp, ui: &mut Ui) {
                 Category::Audio => audio(app, ui),
                 Category::Lyrics => lyrics(app, ui),
                 Category::Visualizer => visualizer(app, ui),
-                Category::Discord => discord(app, ui),
                 Category::Shortcuts => shortcuts_cat(app, ui),
                 Category::MiniPlayer => mini(app, ui),
                 Category::Services => services(app, ui),
@@ -233,7 +227,6 @@ fn category_keywords(c: Category) -> &'static [&'static str] {
         Category::Appearance => &["font", "scale", "sidebar", "layout"],
         Category::Privacy => &["privacy", "telemetry", "cache", "log", "network", "disconnect"],
         Category::Shortcuts => &["keyboard", "hotkey", "macro", "shortcut", "media keys"],
-        Category::Discord => &["discord", "rich presence"],
         Category::Lyrics => &["lyrics", "karaoke", "offset"],
         Category::MiniPlayer => &["mini", "overlay", "always on top"],
         Category::Transfer => &["transfer", "export", "migration", "backup"],
@@ -788,8 +781,9 @@ fn eq_engine_settings(app: &mut AquaApp, ui: &mut Ui) -> bool {
                     ui.label(RichText::new(format!("Overall level lowered by {head:.1} dB so the boosts don't distort (raise Windows' volume to compensate).")).weak());
                 }
             }
+            d |= ui.checkbox(&mut app.cfg.audio.apo_only_while_playing, "Only while Aqua Glass is playing (flat when paused or stopped)").changed();
             d |= ui.checkbox(&mut app.cfg.audio.apo_flat_on_exit, "Set the EQ back to flat when Aqua Glass closes").changed();
-            widgets::note(ui, "Equalizer APO works on the whole output device, so while Aqua Glass is open your EQ also affects other apps on it (games, browser). Aqua Glass' own processing is off in this mode so local files aren't processed twice. Changes reach Equalizer APO about 0.15 s after you stop moving a slider. Make sure the device you listen on is ticked in Equalizer APO's Configurator.");
+            widgets::note(ui, "Equalizer APO works on the whole output device after Windows has mixed all apps together, so it can't single out Aqua Glass: while your EQ is active it also affects other apps on that device (games, browser). “Only while playing” keeps that to the time music is actually playing. Aqua Glass' own processing is off in this mode so local files aren't processed twice. Changes reach Equalizer APO about 0.15 s after you stop moving a slider. Make sure the device you listen on is ticked in Equalizer APO's Configurator.");
         }
     }
     if let Some(e) = &app.apo_error {
@@ -943,22 +937,6 @@ fn visualizer(app: &mut AquaApp, ui: &mut Ui) {
     widgets::note(ui, "Position: on the Now Playing page, and optionally in the player bar (“Visualizer in Player Bar”).");
     if d {
         app.mark_dirty();
-    }
-}
-
-fn discord(app: &mut AquaApp, ui: &mut Ui) {
-    toggles(app, ui, Category::Discord);
-    widgets::section(ui, "Discord application");
-    ui.horizontal(|ui| {
-        ui.label("Application ID");
-        if ui.add(egui::TextEdit::singleline(&mut app.settings.discord_app_id).desired_width(220.0)).changed() {
-            app.cfg.services.discord_app_id = app.settings.discord_app_id.trim().to_string();
-            app.mark_dirty();
-        }
-    });
-    widgets::note(ui, "Discord shows the application's name as the activity title. Create a free application named “Aqua Glass” at discord.com/developers/applications and paste its Application ID. Nothing is sent anywhere except to your local Discord app.");
-    if app.cfg.active("discord") && app.settings.discord_app_id.trim().is_empty() {
-        widgets::warn(ui, "Rich Presence is enabled but no Application ID is set.");
     }
 }
 
@@ -1459,9 +1437,6 @@ fn performance(app: &mut AquaApp, ui: &mut Ui) {
         if let Some(r) = app.radio_status() {
             tasks.push(if r.active { "Similarity Radio (active)".into() } else { "Similarity Radio (idle)".into() });
         }
-        if app.ints.discord.lock().unwrap().is_some() {
-            tasks.push("Discord presence".into());
-        }
         if app.ints.hotkeys.is_some() {
             tasks.push("global hotkeys".into());
         }
@@ -1634,7 +1609,6 @@ fn privacy(app: &mut AquaApp, ui: &mut Ui) {
             ("Spotify access points (librespot)", "Premium audio streaming", "when playing Spotify tracks"),
             ("i.scdn.co", "album artwork", "when covers are shown"),
             ("lrclib.net", "lyrics lookup (title, artist, album, duration)", "“Lyrics” enabled"),
-            ("Local Discord app (IPC, no network)", "Rich Presence", "“Discord Rich Presence” enabled"),
         ] {
             ui.label(host);
             ui.label(why);
@@ -1642,7 +1616,7 @@ fn privacy(app: &mut AquaApp, ui: &mut Ui) {
             ui.end_row();
         }
     });
-    widgets::note(ui, "No telemetry, analytics or advertising SDKs. Your listening history is never sent anywhere except the service you play from (and Discord, if you enable it). Tokens are stored in Windows Credential Manager and are never logged or exported.");
+    widgets::note(ui, "No telemetry, analytics or advertising SDKs. Your listening history is never sent anywhere except the service you play from. Tokens are stored in Windows Credential Manager and are never logged or exported.");
     widgets::section(ui, "Data");
     ui.horizontal_wrapped(|ui| {
         if ui.button("Clear artwork cache").clicked() {
@@ -1685,9 +1659,6 @@ fn advanced(app: &mut AquaApp, ui: &mut Ui) {
         let mut f = Vec::new();
         if cfg!(feature = "spotify-playback") {
             f.push("spotify-playback");
-        }
-        if cfg!(feature = "discord") {
-            f.push("discord");
         }
         if cfg!(feature = "local-files") {
             f.push("local-files");

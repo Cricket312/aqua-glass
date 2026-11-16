@@ -63,12 +63,12 @@ results.append(run("balanced-idle", "Balanced", [], play=False))
 results.append(run("balanced-playback", "Balanced", []))
 results.append(run("balanced-nowplaying", "Balanced", [], page="now-playing"))
 results.append(run("enhanced-nowplaying", "Enhanced", [], page="now-playing"))
-results.append(run("full-nowplaying", "FullyCustomized", ["+bg_image", "+discord"], page="now-playing"))
+results.append(run("full-nowplaying", "FullyCustomized", ["+bg_image"], page="now-playing"))
 base = run("feature-baseline", "Minimal", [], page="now-playing")
 results.append(base)
 for feats in (["+visualizer"], ["+visualizer", "+vis_in_bar"], ["+bg_image"], ["+bg_image", "+bg_blur"], ["+bg_animated"],
               ["+bg_image", "+bg_transitions"], ["+custom_theme", "+translucent_panels", "+shadows", "+animations", "+hover_effects"],
-              ["+custom_font"], ["+overlay"], ["+eq", "+bass_boost"], ["+discord"], ["+lyrics"], ["+artwork_in_lists"]):
+              ["+custom_font"], ["+overlay"], ["+eq", "+bass_boost"], ["+lyrics"], ["+artwork_in_lists"]):
     r = run("feature:" + ",".join(f[1:] for f in feats), "Minimal", feats, page="now-playing")
     r["delta_vs_baseline_mb"] = round(r["private_mb_mean"] - base["private_mb_mean"], 1)
     results.append(r)

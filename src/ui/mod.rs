@@ -114,7 +114,6 @@ pub struct Integrations {
     pub media: Option<winint::Media>,
     pub hotkeys: Option<winint::Hotkeys>,
     pub hotkey_errors: Vec<String>,
-    pub discord: Arc<Mutex<Option<crate::discord::Discord>>>,
     pub notify: Arc<AtomicBool>,
     pub errors: Vec<String>,
 }
@@ -141,6 +140,8 @@ pub struct AquaApp {
     pub apo_pending: Option<(String, Instant)>,
     pub apo_last: Option<String>,
     pub apo_error: Option<String>,
+    /// Playing state the Equalizer APO file was last computed for.
+    pub apo_playing_seen: bool,
     pub filter: Filter,
     pub engine: Engine,
     pub out: Output,
@@ -228,17 +229,11 @@ impl AquaApp {
         let edit_theme = themes.iter().find(|t| t.name == cfg.appearance.theme).cloned().unwrap_or_default();
 
         // integrations driven by engine listeners (work while the window is hidden)
-        let discord: Arc<Mutex<Option<crate::discord::Discord>>> = Arc::new(Mutex::new(None));
         let notify = Arc::new(AtomicBool::new(false));
         {
-            let d = discord.clone();
-            let eng = engine.clone();
             let n = notify.clone();
             let mut last_key = String::new();
             engine.add_listener(Box::new(move |st: &PlayerState| {
-                if let Some(dc) = d.lock().unwrap().as_ref() {
-                    dc.update(st, eng.position_ms());
-                }
                 let key = st.current.as_ref().map(|t| t.key()).unwrap_or_default();
                 if key != last_key {
                     last_key = key;
@@ -283,6 +278,7 @@ impl AquaApp {
             apo_pending: None,
             apo_last: None,
             apo_error: None,
+            apo_playing_seen: false,
             filter: Filter::All,
             engine,
             out,
@@ -308,7 +304,7 @@ impl AquaApp {
             vis_buf: Vec::new(),
             vis_wanted: false,
             vis_last: Instant::now(),
-            ints: Integrations { tray: None, media: None, hotkeys: None, hotkey_errors: vec![], discord, notify, errors: vec![] },
+            ints: Integrations { tray: None, media: None, hotkeys: None, hotkey_errors: vec![], notify, errors: vec![] },
             hwnd,
             mini_open: Arc::new(AtomicBool::new(false)),
             settings: settings::SettingsUi::default(),
@@ -630,6 +626,31 @@ impl AquaApp {
         self.applied = None; // re-run apply_config so the current settings are written
     }
 
+    /// Compute what Equalizer APO should apply now and queue it if it changed.
+    fn apo_queue(&mut self) {
+        self.apo_playing_seen = self.state.playing;
+        if !self.apo_linked {
+            return;
+        }
+        let c = &self.cfg;
+        let dsp = crate::audio::dsp::DspParams {
+            eq_on: c.active("eq"),
+            eq_gains_db: c.audio.eq_gains_db,
+            bass_on: c.active("bass_boost"),
+            bass_db: c.audio.bass_db,
+            preamp_db: c.audio.preamp_db,
+            balance: c.audio.balance,
+        };
+        let engine = c.audio.eq_engine == crate::config::EqEngine::EqualizerApo;
+        let active = engine && (self.state.playing || !c.audio.apo_only_while_playing);
+        let text = crate::eqapo::render(&dsp, active);
+        if self.apo_last.as_ref() != Some(&text) {
+            self.apo_pending = Some((text, Instant::now()));
+        } else {
+            self.apo_pending = None;
+        }
+    }
+
     /// Write pending Equalizer APO settings once the user pauses (150 ms), so
     /// dragging a slider doesn't make Equalizer APO reload 60 times a second.
     fn apo_tick(&mut self, ctx: &egui::Context) {
@@ -927,12 +948,7 @@ impl AquaApp {
         let apo = c.audio.eq_engine == crate::config::EqEngine::EqualizerApo && self.apo_linked;
         // with Equalizer APO the whole device is processed there; don't do it twice
         self.out.s.dsp.set(if apo { crate::audio::dsp::DspParams::default() } else { dsp.clone() });
-        if self.apo_linked {
-            let text = crate::eqapo::render(&dsp, apo);
-            if self.apo_last.as_ref() != Some(&text) {
-                self.apo_pending = Some((text, Instant::now()));
-            }
-        }
+        self.apo_queue();
         if changed(&|c: &Config| c.audio.buffer_ms.to_string()) {
             self.out.set_buffer_ms(c.audio.buffer_ms);
         }
@@ -962,40 +978,6 @@ impl AquaApp {
             l.keep_in_memory = keep;
             if !keep {
                 l.evict_except(None);
-            }
-        }
-        // discord
-        let dopts = crate::discord::DiscordOpts {
-            app_id: c.services.discord_app_id.clone(),
-            title: c.active("discord_title"),
-            artist: c.active("discord_artist"),
-            album: c.active("discord_album"),
-            artwork: c.active("discord_artwork"),
-            elapsed: c.active("discord_elapsed"),
-            service: c.active("discord_service"),
-            paused_status: c.active("discord_status"),
-            privacy: c.active("discord_privacy"),
-        };
-        {
-            let mut d = self.ints.discord.lock().unwrap();
-            if c.active("discord") {
-                match d.as_ref() {
-                    None => {
-                        let dc = crate::discord::Discord::start(dopts.clone());
-                        dc.update(&self.engine.snapshot(), self.engine.position_ms());
-                        *d = Some(dc);
-                    }
-                    Some(dc) => {
-                        if self.settings.discord_opts_last.as_ref() != Some(&dopts) {
-                            dc.set_opts(dopts.clone());
-                            dc.update(&self.engine.snapshot(), self.engine.position_ms());
-                        }
-                    }
-                }
-                self.settings.discord_opts_last = Some(dopts);
-            } else if d.is_some() {
-                *d = None; // drop › thread clears presence and exits
-                self.settings.discord_opts_last = None;
             }
         }
         self.ints.notify.store(c.active("notifications"), Ordering::Relaxed);
@@ -1608,6 +1590,9 @@ impl eframe::App for AquaApp {
             drop(st);
         }
         self.apply_config(ctx);
+        if self.state.playing != self.apo_playing_seen {
+            self.apo_queue(); // "only while playing": EQ on at play, flat at pause/stop
+        }
         self.apo_tick(ctx);
         self.perf_tick();
         self.lyrics_tick();
@@ -1743,7 +1728,6 @@ impl eframe::App for AquaApp {
         self.save_queue();
         self.save_if_dirty(true);
         self.engine.send(Cmd::Shutdown);
-        *self.ints.discord.lock().unwrap() = None;
     }
 }
 

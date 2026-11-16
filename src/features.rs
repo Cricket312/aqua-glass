@@ -22,7 +22,6 @@ pub enum Category {
     Audio,
     Lyrics,
     Visualizer,
-    Discord,
     Shortcuts,
     MiniPlayer,
     Services,
@@ -34,7 +33,7 @@ pub enum Category {
 }
 
 impl Category {
-    pub const ALL: [Category; 17] = [
+    pub const ALL: [Category; 16] = [
         Category::General,
         Category::Appearance,
         Category::Themes,
@@ -43,7 +42,6 @@ impl Category {
         Category::Audio,
         Category::Lyrics,
         Category::Visualizer,
-        Category::Discord,
         Category::Shortcuts,
         Category::MiniPlayer,
         Category::Services,
@@ -63,7 +61,6 @@ impl Category {
             Category::Audio => "Audio",
             Category::Lyrics => "Lyrics",
             Category::Visualizer => "Visualizer",
-            Category::Discord => "Discord",
             Category::Shortcuts => "Keyboard Shortcuts",
             Category::MiniPlayer => "Mini-Player & Overlay",
             Category::Services => "Music Services",
@@ -282,18 +279,6 @@ pub static FEATURES: &[FeatureDef] = &[
         "Heavier smoothing and a 20 FPS cap for a calmer visualizer.", "accessibility motion"),
     f!("vis_in_bar", "Visualizer in Player Bar", Visualizer, Low, (0.0, 1.0), ["visualizer"], true, [false, false, false, true],
         "Show a small spectrum in the bottom playback bar on every page.", "mini spectrum bar"),
-    // ---------------- Discord ----------------
-    f!("discord", "Discord Rich Presence", Discord, Low, (1.0, 4.0), [], false, [false, false, false, false],
-        "Show what you're listening to in Discord. Talks only to the local Discord app over IPC; inactive when off. Discord need not be installed.", "discord rpc presence status"),
-    f!("discord_title", "Show Song Title", Discord, Low, (0.0, 0.0), ["discord"], false, [true, true, true, true], "Include the title in your Discord status.", ""),
-    f!("discord_artist", "Show Artist", Discord, Low, (0.0, 0.0), ["discord"], false, [true, true, true, true], "Include the artist.", ""),
-    f!("discord_album", "Show Album", Discord, Low, (0.0, 0.0), ["discord"], false, [false, true, true, true], "Include the album name.", ""),
-    f!("discord_artwork", "Show Album Artwork", Discord, Low, (0.0, 0.0), ["discord"], false, [false, true, true, true],
-        "Send the public artwork URL (Spotify CDN) so Discord can display it. Local files never send artwork.", "image"),
-    f!("discord_elapsed", "Show Elapsed Time", Discord, Low, (0.0, 0.0), ["discord"], false, [true, true, true, true], "Show a running timer.", ""),
-    f!("discord_service", "Show Service Name", Discord, Low, (0.0, 0.0), ["discord"], false, [true, true, true, true], "Show 'on Spotify'.", ""),
-    f!("discord_status", "Show Paused State", Discord, Low, (0.0, 0.0), ["discord"], false, [true, true, true, true], "Keep the status while paused, marked as paused. Off = clear status when paused.", ""),
-    f!("discord_privacy", "Privacy Mode", Discord, Low, (0.0, 0.0), ["discord"], false, [false, false, false, false], "Only show 'Listening to music' with no track details.", "private hide"),
     // ---------------- Mini-player / overlay ----------------
     f!("mini_player", "Mini-Player Window", MiniPlayer, Moderate, (4.0, 15.0), [], false, [false, true, true, true],
         "Allow the compact mini-player window (toggle with the button or shortcut). A window is only created while it is open.", "mini compact small window"),
@@ -416,8 +401,8 @@ mod tests {
         assert_eq!(Impact::classify(36.0), Impact::VeryHigh);
     }
     #[test]
-    fn search_finds_ram_lyrics_discord_background() {
-        for q in ["RAM", "lyrics", "Discord", "background"] {
+    fn search_finds_ram_lyrics_eq_background() {
+        for q in ["RAM", "lyrics", "Equalizer", "background"] {
             assert!(FEATURES.iter().any(|f| f.matches(q)), "no match for {q}");
         }
     }
