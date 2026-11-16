@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.7.3 — 2026-11-16 (EQ for Spotify through Equalizer APO)
+
+### Added
+- **Equalizer engine: Equalizer APO** (Settings › Audio). Aqua Glass' EQ, bass boost, preamp
+  and balance can drive [Equalizer APO](https://sourceforge.net/projects/equalizerapo/), a
+  system-wide equalizer, so they also shape Spotify songs played by Spotify Soloist.
+  - Finds Equalizer APO through its registry entry (`ConfigPath`) or the default folder.
+  - **Connect** adds one line, `Include: aqua-glass.txt`, to Equalizer APO's `config.txt`,
+    after a one-time backup (`config.txt.before-aqua-glass`). **Disconnect** removes exactly
+    that line; tested to restore `config.txt` byte for byte. Nothing in Equalizer APO's
+    folder is touched before Connect.
+  - Aqua Glass only rewrites its own `aqua-glass.txt` (peaking filters per band, a
+    120 Hz low shelf for bass, preamp, balance via `Copy:`), which Equalizer APO reloads by
+    itself. Changes are written 150 ms after a slider stops moving, so dragging doesn't
+    make Equalizer APO reload 60 times a second.
+  - Headroom: the overall level is lowered by the real peak of the combined EQ and bass
+    curve, computed from the filter responses, so boosts don't distort. Settings shows the
+    amount.
+  - Aqua Glass' own processing turns off while connected, so local files aren't processed
+    twice. By default the EQ goes flat when Aqua Glass closes (optional).
+- Tests: config rendering, the headroom calculation, connect/disconnect. Under Wine, with a
+  simulated Equalizer APO install: detection, Connect, live updates from presets and slider
+  drags, flat on exit, re-apply on start and Disconnect.
+
 ## 0.7.2 — 2026-11-15
 
 ### Fixed

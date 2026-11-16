@@ -134,6 +134,13 @@ pub struct AquaApp {
     pub featured_idx: usize,
     /// Settings signature Soloist was last started with (see `ensure_soloist`).
     pub soloist_sig: Option<u64>,
+    /// Equalizer APO: config folder (None = not installed), whether config.txt
+    /// includes our file, text to write after a short pause, last text written.
+    pub apo_dir: Option<std::path::PathBuf>,
+    pub apo_linked: bool,
+    pub apo_pending: Option<(String, Instant)>,
+    pub apo_last: Option<String>,
+    pub apo_error: Option<String>,
     pub filter: Filter,
     pub engine: Engine,
     pub out: Output,
@@ -271,6 +278,11 @@ impl AquaApp {
             forward: Vec::new(),
             featured_idx: 0,
             soloist_sig: None,
+            apo_dir: None,
+            apo_linked: false,
+            apo_pending: None,
+            apo_last: None,
+            apo_error: None,
             filter: Filter::All,
             engine,
             out,
@@ -339,6 +351,7 @@ impl AquaApp {
         app.engine.send(Cmd::SetRepeat(app.cfg.playback.repeat));
         app.engine.send(Cmd::SetShuffle(app.cfg.playback.shuffle));
         app.remove_legacy_youtube_data();
+        app.detect_apo();
         if safe_mode {
             app.toast("Safe mode: the Spotify session and the saved queue were not restored. Sign in again from Settings › Music Services when ready.", false);
         } else {
@@ -609,6 +622,35 @@ impl AquaApp {
         }
     }
 
+    /// Look for Equalizer APO (startup and the settings "Check again" button).
+    pub fn detect_apo(&mut self) {
+        self.apo_dir = crate::eqapo::config_dir();
+        self.apo_linked = self.apo_dir.as_deref().is_some_and(crate::eqapo::is_linked);
+        self.apo_last = None; // rewrite our file on the next change
+        self.applied = None; // re-run apply_config so the current settings are written
+    }
+
+    /// Write pending Equalizer APO settings once the user pauses (150 ms), so
+    /// dragging a slider doesn't make Equalizer APO reload 60 times a second.
+    fn apo_tick(&mut self, ctx: &egui::Context) {
+        let Some((text, at)) = &self.apo_pending else { return };
+        let wait = Duration::from_millis(150).saturating_sub(at.elapsed());
+        if !wait.is_zero() {
+            ctx.request_repaint_after(wait);
+            return;
+        }
+        let text = text.clone();
+        self.apo_pending = None;
+        let Some(dir) = self.apo_dir.clone() else { return };
+        match crate::eqapo::write(&dir, &text) {
+            Ok(()) => {
+                self.apo_last = Some(text);
+                self.apo_error = None;
+            }
+            Err(e) => self.apo_error = Some(crate::eqapo::explain(&e, &dir)),
+        }
+    }
+
     pub fn spotify_login(&mut self) {
         self.sp_status = "Waiting for browser sign-in…".into();
         let api = self.spotify.clone();
@@ -873,14 +915,24 @@ impl AquaApp {
         }
         self.ensure_soloist(false);
         // DSP
-        self.out.s.dsp.set(crate::audio::dsp::DspParams {
+        let dsp = crate::audio::dsp::DspParams {
             eq_on: c.active("eq"),
             eq_gains_db: c.audio.eq_gains_db,
             bass_on: c.active("bass_boost"),
             bass_db: c.audio.bass_db,
             preamp_db: c.audio.preamp_db,
             balance: c.audio.balance,
-        });
+        };
+        // only once connected: until then Aqua Glass keeps processing local files itself
+        let apo = c.audio.eq_engine == crate::config::EqEngine::EqualizerApo && self.apo_linked;
+        // with Equalizer APO the whole device is processed there; don't do it twice
+        self.out.s.dsp.set(if apo { crate::audio::dsp::DspParams::default() } else { dsp.clone() });
+        if self.apo_linked {
+            let text = crate::eqapo::render(&dsp, apo);
+            if self.apo_last.as_ref() != Some(&text) {
+                self.apo_pending = Some((text, Instant::now()));
+            }
+        }
         if changed(&|c: &Config| c.audio.buffer_ms.to_string()) {
             self.out.set_buffer_ms(c.audio.buffer_ms);
         }
@@ -1556,6 +1608,7 @@ impl eframe::App for AquaApp {
             drop(st);
         }
         self.apply_config(ctx);
+        self.apo_tick(ctx);
         self.perf_tick();
         self.lyrics_tick();
         self.auto_sync_tick();
@@ -1674,6 +1727,19 @@ impl eframe::App for AquaApp {
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        if self.apo_linked {
+            if let Some(dir) = &self.apo_dir {
+                let keep = self.cfg.audio.eq_engine == crate::config::EqEngine::EqualizerApo && !self.cfg.audio.apo_flat_on_exit;
+                let text = match (&self.apo_pending, keep) {
+                    (Some((t, _)), true) => t.clone(),
+                    (_, true) => self.apo_last.clone().unwrap_or_default(),
+                    _ => crate::eqapo::render(&crate::audio::dsp::DspParams::default(), false),
+                };
+                if !text.is_empty() {
+                    let _ = crate::eqapo::write(dir, &text);
+                }
+            }
+        }
         self.save_queue();
         self.save_if_dirty(true);
         self.engine.send(Cmd::Shutdown);

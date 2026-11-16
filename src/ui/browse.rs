@@ -720,7 +720,8 @@ pub fn quick_settings(app: &mut AquaApp, ui: &mut Ui) {
         }
     }
     if app.cfg.services.spotify_backend == crate::config::SpotifyBackend::Soloist {
-        ui.label(RichText::new("EQ and visualizer affect local files only — Spotify Soloist outputs its audio directly.").small().weak());
+        let apo = app.cfg.audio.eq_engine == crate::config::EqEngine::EqualizerApo && app.apo_linked;
+        ui.label(RichText::new(if apo { "EQ applies to Spotify too (Equalizer APO). The visualizer follows local files only." } else { "EQ and visualizer affect local files only — Spotify Soloist outputs its audio directly. Use Equalizer APO (Settings › Audio) for Spotify." }).small().weak());
     }
     ui.separator();
     ui.horizontal(|ui| {

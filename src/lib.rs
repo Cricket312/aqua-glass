@@ -19,6 +19,7 @@ pub mod transfer;
 pub mod util;
 pub mod artwork;
 pub mod discord;
+pub mod eqapo;
 pub mod ui;
 pub mod winint;
 

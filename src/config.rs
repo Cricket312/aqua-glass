@@ -162,7 +162,21 @@ pub struct Audio {
     pub balance: f32,
     pub buffer_ms: u32,
     pub preamp_db: f32,
+    /// Where the EQ / bass / preamp / balance are applied.
+    pub eq_engine: EqEngine,
+    /// With Equalizer APO: reset Aqua Glass' EQ to flat when Aqua Glass closes.
+    pub apo_flat_on_exit: bool,
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum EqEngine {
+    /// Inside Aqua Glass: local files (and librespot), not Spotify Soloist.
+    #[default]
+    AquaGlass,
+    /// Through Equalizer APO: everything on the output device, Soloist included.
+    EqualizerApo,
+}
+
 impl Default for Audio {
     fn default() -> Self {
         Self {
@@ -173,6 +187,8 @@ impl Default for Audio {
             balance: 0.0,
             buffer_ms: 500,
             preamp_db: 0.0,
+            eq_engine: EqEngine::AquaGlass,
+            apo_flat_on_exit: true,
         }
     }
 }

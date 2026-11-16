@@ -93,6 +93,13 @@ impl Biquad {
             (a + 1.0) + (a - 1.0) * c - sa,
         );
     }
+    /// |H(e^jw)| at angular frequency `w` (radians/sample).
+    fn magnitude(&self, w: f32) -> f32 {
+        let (c1, s1, c2, s2) = (w.cos(), w.sin(), (2.0 * w).cos(), (2.0 * w).sin());
+        let num = ((self.b0 + self.b1 * c1 + self.b2 * c2).powi(2) + (self.b1 * s1 + self.b2 * s2).powi(2)).sqrt();
+        let den = ((1.0 + self.a1 * c1 + self.a2 * c2).powi(2) + (self.a1 * s1 + self.a2 * s2).powi(2)).sqrt();
+        num / den.max(1e-9)
+    }
     #[inline]
     fn run(&mut self, ch: usize, x: f32) -> f32 {
         let y = self.b0 * x + self.z1[ch];
@@ -100,6 +107,38 @@ impl Biquad {
         self.z2[ch] = self.b2 * x - self.a2 * y;
         y
     }
+}
+
+/// Highest gain (dB) the EQ + bass curve reaches anywhere in 20 Hz–20 kHz — the
+/// headroom needed so boosts don't clip. Evaluated on the real filter curves
+/// (bands overlap and partly cancel, so adding the largest boosts overstates it).
+pub fn peak_gain_db(p: &DspParams) -> f32 {
+    let rate = 48_000.0;
+    let mut filters = Vec::new();
+    if p.eq_on {
+        for (i, f) in EQ_FREQS.iter().enumerate() {
+            if p.eq_gains_db[i].abs() > 0.05 {
+                let mut b = Biquad::default();
+                b.peaking(rate, *f, 1.41, p.eq_gains_db[i]);
+                filters.push(b);
+            }
+        }
+    }
+    if p.bass_on && p.bass_db.abs() > 0.05 {
+        let mut b = Biquad::default();
+        b.low_shelf(rate, 120.0, p.bass_db);
+        filters.push(b);
+    }
+    if filters.is_empty() {
+        return 0.0;
+    }
+    (0..400)
+        .map(|i| {
+            let f = 20.0 * 1000f32.powf(i as f32 / 399.0); // 20 Hz .. 20 kHz, log-spaced
+            let w = 2.0 * std::f32::consts::PI * f / rate;
+            20.0 * filters.iter().map(|b| b.magnitude(w)).product::<f32>().log10()
+        })
+        .fold(f32::MIN, f32::max)
 }
 
 /// Per-producer processing state.
@@ -346,5 +385,23 @@ mod tests {
         o.clear();
         to_stereo(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 3, &mut o);
         assert_eq!(o, vec![1.0, 2.0, 4.0, 5.0]);
+    }
+}
+
+#[cfg(test)]
+mod headroom_tests {
+    use super::*;
+    #[test]
+    fn peak_gain_follows_the_real_curve() {
+        assert_eq!(peak_gain_db(&DspParams::default()), 0.0);
+        let bass = DspParams { bass_on: true, bass_db: 9.0, ..Default::default() };
+        assert!((peak_gain_db(&bass) - 9.0).abs() < 0.3, "{}", peak_gain_db(&bass));
+        let mut g = [0.0; 10];
+        g[5] = 6.0; // 1 kHz
+        let one = DspParams { eq_on: true, eq_gains_db: g, ..Default::default() };
+        assert!((peak_gain_db(&one) - 6.0).abs() < 0.3);
+        // a cut never needs headroom
+        g[5] = -6.0;
+        assert!(peak_gain_db(&DspParams { eq_on: true, eq_gains_db: g, ..Default::default() }) < 0.1);
     }
 }

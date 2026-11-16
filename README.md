@@ -159,6 +159,18 @@ Details:
   build, idle and unpaired: about 25 MB resident (≈3 MB of it private). Memory while
   streaming and on Windows has **not been measured yet**.
 
+### EQ for Spotify songs (Equalizer APO)
+
+Spotify Soloist outputs its audio straight to Windows, so Aqua Glass' built-in EQ can't
+change it. If [Equalizer APO](https://sourceforge.net/projects/equalizerapo/) is installed,
+open Settings › Audio, choose **Equalizer engine: Equalizer APO** and click **Connect**. Your
+EQ, bass boost, preamp and balance then apply to everything on that output device,
+Spotify included, while you adjust them.
+
+Equalizer APO is device-wide, so other apps on the same device are affected too while
+Aqua Glass is open. By default the EQ goes flat when Aqua Glass closes. Disconnect restores
+Equalizer APO's `config.txt` exactly.
+
 ### Local files
 
 Settings → Music Services → Local files → add a folder. MP3, FLAC, Ogg Vorbis, WAV and
