@@ -4,6 +4,7 @@ mod background;
 mod browse;
 mod jobs;
 mod pages;
+mod portrait;
 mod shell;
 mod settings;
 mod transfer_ui;
@@ -133,6 +134,8 @@ pub struct AquaApp {
     pub featured_idx: usize,
     /// Settings signature Soloist was last started with (see `ensure_soloist`).
     pub soloist_sig: Option<u64>,
+    /// Portrait layout is active this frame (see `portrait::wants_portrait`).
+    pub portrait: bool,
     /// Equalizer APO: config folder (None = not installed), whether config.txt
     /// includes our file, text to write after a short pause, last text written.
     pub apo_dir: Option<std::path::PathBuf>,
@@ -273,6 +276,7 @@ impl AquaApp {
             forward: Vec::new(),
             featured_idx: 0,
             soloist_sig: None,
+            portrait: false,
             apo_dir: None,
             apo_linked: false,
             apo_pending: None,
@@ -670,6 +674,24 @@ impl AquaApp {
             }
             Err(e) => self.apo_error = Some(crate::eqapo::explain(&e, &dir)),
         }
+    }
+
+    /// Change the layout mode. Forcing portrait on a wide window resizes it to a
+    /// phone-like column (remembering the landscape size); leaving portrait
+    /// restores that size.
+    pub fn set_layout_mode(&mut self, m: crate::config::LayoutMode, ctx: &egui::Context) {
+        use crate::config::LayoutMode;
+        let size = ctx.content_rect().size();
+        let prev = self.cfg.general.layout_mode;
+        self.cfg.general.layout_mode = m;
+        if m == LayoutMode::Portrait && size.x > portrait::LEAVE_PORTRAIT_W {
+            self.cfg.general.landscape_size = Some([size.x, size.y]);
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(portrait::PORTRAIT_WINDOW[0], portrait::PORTRAIT_WINDOW[1])));
+        } else if prev == LayoutMode::Portrait && m != LayoutMode::Portrait && size.x < portrait::LEAVE_PORTRAIT_W {
+            let [w, h] = self.cfg.general.landscape_size.unwrap_or([1240.0, 780.0]);
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(w, h)));
+        }
+        self.mark_dirty();
     }
 
     pub fn spotify_login(&mut self) {
@@ -1668,7 +1690,20 @@ impl eframe::App for AquaApp {
         }
 
         background::paint(self, ui);
-        shell::shell(self, ui);
+        let r = ui.max_rect();
+        let portrait = portrait::wants_portrait(self.cfg.general.layout_mode, r.width(), r.height(), self.portrait);
+        if portrait != self.portrait {
+            self.portrait = portrait;
+            // release cover art the new layout doesn't show (kept: anything on
+            // screen in the last second); it reloads lazily if needed again
+            self.artwork.lock().unwrap().evict_to(1);
+            log::info!("layout: {}", if portrait { "portrait" } else { "landscape" });
+        }
+        if portrait {
+            portrait::shell(self, ui);
+        } else {
+            shell::shell(self, ui);
+        }
         viewports::show(self, &ctx);
         self.dialogs(&ctx);
         self.paint_toasts(&ctx);

@@ -258,6 +258,16 @@ fn general(app: &mut AquaApp, ui: &mut Ui) {
     #[cfg(not(windows))]
     widgets::note(ui, "Tray, autostart, notifications and media controls are Windows features; they are inactive in this development build.");
     let mut d = false;
+    widgets::section(ui, "Layout");
+    ui.horizontal(|ui| {
+        for (m, l) in [(crate::config::LayoutMode::Auto, "Auto"), (crate::config::LayoutMode::Landscape, "Landscape"), (crate::config::LayoutMode::Portrait, "Portrait")] {
+            if ui.selectable_label(app.cfg.general.layout_mode == m, l).clicked() {
+                let ctx = ui.ctx().clone();
+                app.set_layout_mode(m, &ctx);
+            }
+        }
+    });
+    widgets::note(ui, "Auto switches to the single-column portrait layout when the window is narrower than 720 px (and back above 800 px). Portrait uses the same player and music services — nothing runs twice — and builds only what it shows: no sidebar, no visualizer, one tab at a time, and a queue that only loads the rows you can see.");
     widgets::section(ui, "Interface");
     slider_f(ui, "Interface scale (High-DPI is automatic; this is an extra zoom)", &mut app.cfg.general.ui_scale, 0.6..=2.5, &mut d);
     slider_f(ui, "Sidebar width", &mut app.cfg.general.sidebar_width, 150.0..=400.0, &mut d);

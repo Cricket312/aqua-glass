@@ -21,6 +21,29 @@ pub struct General {
     pub sidebar_width: f32,
     pub sidebar_collapsed: bool,
     pub right_panel: RightPanel,
+    /// Landscape (sidebar + panels) or portrait (single column) layout.
+    pub layout_mode: LayoutMode,
+    /// Portrait: which tab under the player is open (kept across restarts).
+    pub portrait_tab: PortraitTab,
+    /// Window size to return to when leaving a forced portrait window.
+    pub landscape_size: Option<[f32; 2]>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum LayoutMode {
+    /// Portrait when the window is narrow and tall, landscape otherwise.
+    #[default]
+    Auto,
+    Landscape,
+    Portrait,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum PortraitTab {
+    #[default]
+    Queue,
+    Lyrics,
+    Discover,
 }
 impl Default for General {
     fn default() -> Self {
@@ -32,6 +55,9 @@ impl Default for General {
             sidebar_width: 220.0,
             sidebar_collapsed: false,
             right_panel: RightPanel::Closed,
+            layout_mode: LayoutMode::Auto,
+            portrait_tab: PortraitTab::Queue,
+            landscape_size: None,
         }
     }
 }

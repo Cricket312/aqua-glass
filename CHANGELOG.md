@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.8.0 — 2026-11-16 (Adaptive Portrait Mode)
+
+### Added
+- **Portrait layout** for narrow windows: Auto below 720 px, back above 800 px (hysteresis),
+  or forced from the "…" menu / Settings › General. Forcing portrait resizes the window to
+  400×860 and leaving it restores the previous size. The minimum window width is now 360 px.
+  - Header with RAM indicator, search and settings.
+  - **Playing** screen: large artwork; clickable title (album) and artists (artist page);
+    like; progress; the vector player controls.
+  - Queue / Lyrics / Discover tabs, of which only the active one is built; the choice is
+    remembered.
+  - A mini player on other pages and a bottom bar (Playing, Home, Search, Library).
+- **Memory rules:**
+  - Same engine, providers, radio, library and artwork cache as landscape; nothing is
+    duplicated and playback continues through layout switches.
+  - No sidebar, side panel or visualizer in portrait (the audio tap stays off).
+  - The queue is virtualised (`show_rows`), so only visible rows exist and request artwork.
+  - Cover textures not shown in the last second are released on every layout switch.
+- **Small list thumbnails:** rows in the queue, song lists, playlists and the player bar
+  use 128 px textures (`Kind::Thumb`) instead of full 300 px covers, in both layouts.
+- **`bench/layout_bench.py`:** landscape vs portrait under identical playback conditions,
+  measuring private working set and private bytes, with and without cover art. Results are
+  in docs/BENCHMARKS.md:
+  - Without covers, portrait is 1.3–1.5 MB smaller.
+  - With covers, portrait is 0.3–0.7 MB larger; it shows queue thumbnails that landscape's
+    Now Playing doesn't. Before the thumbnail change this was +3.3–3.6 MB.
+  - Both layouts use about 43–45 MB.
+
 ## 0.7.4 — 2026-11-16
 
 ### Removed

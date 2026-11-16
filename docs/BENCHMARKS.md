@@ -197,3 +197,48 @@ native Windows figure; see the Linux numbers above for the app's own footprint. 
 
 > Discord Rich Presence was removed in 0.7.4. The rows above that mention it are kept as
 > historical measurements.
+
+## v0.8.0 — landscape vs portrait (same playback conditions)
+
+`bench/layout_bench.py` runs the release build with identical settings and conditions:
+
+* the same preset, Auto layout and Now Playing / Playing screen;
+* the same queue, playing through PulseAudio's null sink, with an active audio stream
+  verified in every run;
+* only the window size differs: 1240×780 for landscape, 400×860 for portrait.
+
+Each layout ran 3 times, interleaved, sampled every 0.5 s for 10 s after 20 s of settling.
+The run-to-run spread was ≤ 0.25 MB. Raw data:
+`bench/results-layout-linux-dev.json` and `bench/results-layout-artwork-linux-dev.json`.
+
+Linux equivalents of the Windows counters (this is the development environment; the
+Windows build was not benchmarked, because Wine doesn't report private memory):
+
+* private working set ≈ `RssAnon`
+* private bytes ≈ `VmData` (private writable mappings, i.e. commit)
+
+| Queue | Counter | Landscape | Portrait | Portrait − landscape |
+|---|---|---|---|---|
+| 500 untagged WAVs (no covers), Balanced | private working set | 44.21 MB | 42.93 MB | **-1.28 MB** |
+| 500 untagged WAVs (no covers), Balanced | private bytes | 168.33 MB | 167.01 MB | **-1.32 MB** |
+| 500 untagged WAVs (no covers), FullyCustomized | private working set | 44.72 MB | 43.18 MB | **-1.54 MB** |
+| 500 untagged WAVs (no covers), FullyCustomized | private bytes | 170.94 MB | 169.46 MB | **-1.48 MB** |
+| 40 FLACs with 600×600 covers, Balanced | private working set | 43.22 MB | 43.88 MB | **+0.66 MB** |
+| 40 FLACs with 600×600 covers, Balanced | private bytes | 167.59 MB | 168.03 MB | **+0.44 MB** |
+| 40 FLACs with 600×600 covers, FullyCustomized | private working set | 43.80 MB | 44.10 MB | **+0.30 MB** |
+| 40 FLACs with 600×600 covers, FullyCustomized | private bytes | 170.17 MB | 170.28 MB | **+0.11 MB** |
+
+Reading the numbers:
+
+* **Without covers, portrait is about 1.3–1.5 MB smaller.** No sidebar, no side panel and
+  a smaller window, so smaller frame buffers. The renderer here is Mesa llvmpipe (software),
+  whose frame buffers live in process memory; with a GPU on Windows part of that moves to
+  video memory, so the difference there is likely smaller.
+* **With covers, portrait is 0.3–0.7 MB larger.** Its Queue tab shows cover thumbnails of the
+  visible rows, which landscape's Now Playing (side panel closed) doesn't show at all. The
+  first measurement of this was +3.3–3.6 MB, because list thumbnails were loaded at full
+  cover size (300 px). Since 0.8.0 rows use 128 px thumbnails (`Kind::Thumb`), in both
+  layouts.
+* Both layouts stay around 43–45 MB private, far below the 200 MB target.
+* Switching layouts doesn't touch playback: the engine and providers are shared, and audio
+  kept playing straight through in the switch tests.

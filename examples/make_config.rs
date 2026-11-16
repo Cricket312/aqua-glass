@@ -1,5 +1,6 @@
 //! Benchmark helper: print a settings.toml for a preset with extra toggles.
 //! usage: make_config <Minimal|Balanced|Enhanced|FullyCustomized> [+feature|-feature]... [key=value]...
+//! keys: bg_image_path=, font=, repeat=all, window=WxH, layout=Auto|Landscape|Portrait, folder=
 use aqua_glass::config::Config;
 use aqua_glass::features::Preset;
 
@@ -24,6 +25,17 @@ fn main() {
             c.appearance.font_path = v.into();
         } else if a == "repeat=all" {
             c.playback.repeat = aqua_glass::config::RepeatMode::All;
+        } else if let Some(v) = a.strip_prefix("window=") {
+            // window=WIDTHxHEIGHT
+            if let Some((w, h)) = v.split_once('x') {
+                c.general.window_size = Some([w.parse().unwrap_or(1240.0), h.parse().unwrap_or(780.0)]);
+            }
+        } else if let Some(v) = a.strip_prefix("layout=") {
+            c.general.layout_mode = match v {
+                "Portrait" => aqua_glass::config::LayoutMode::Portrait,
+                "Landscape" => aqua_glass::config::LayoutMode::Landscape,
+                _ => aqua_glass::config::LayoutMode::Auto,
+            };
         } else if let Some(v) = a.strip_prefix("folder=") {
             c.services.local_folders = vec![v.into()];
         }

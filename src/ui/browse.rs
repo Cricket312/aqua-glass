@@ -408,7 +408,7 @@ fn song_rows(app: &mut AquaApp, ui: &mut Ui, tracks: &[Track]) {
         }
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(egui::vec2(8.0, 4.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
         let ui2 = &mut child;
-        let tex = if app.cfg.active("artwork_in_lists") { app.artwork.lock().unwrap().get(&t.artwork_url, Kind::Cover) } else { None };
+        let tex = if app.cfg.active("artwork_in_lists") { app.artwork.lock().unwrap().get(&t.artwork_url, Kind::Thumb) } else { None };
         widgets::artwork(ui2, tex.as_ref(), 40.0, 4);
         ui2.vertical(|ui| {
             ui.set_width((w * 0.45).max(160.0));

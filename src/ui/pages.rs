@@ -52,7 +52,7 @@ pub fn track_list(app: &mut AquaApp, ui: &mut Ui, tracks: &[Track], id_salt: &st
                     ui.set_height(row_h);
                     ui.add_sized([36.0, row_h], egui::Label::new(RichText::new(if playing { icon::NOW().to_string() } else { (i + 1).to_string() }).weak()));
                     if thumbs {
-                        let tex = app.artwork.lock().unwrap().get(&t.artwork_url, Kind::Cover);
+                        let tex = app.artwork.lock().unwrap().get(&t.artwork_url, Kind::Thumb);
                         widgets::artwork(ui, tex.as_ref(), row_h - 6.0, 4);
                     }
                     let w = ui.available_width();
@@ -283,7 +283,7 @@ pub fn playlists_page(app: &mut AquaApp, ui: &mut Ui) {
     egui::ScrollArea::vertical().auto_shrink([false, false]).show_rows(ui, 52.0, lists.len(), |ui, range| {
         for p in &lists[range] {
             let r = ui.horizontal(|ui| {
-                let tex = if app.cfg.active("artwork_in_lists") { app.artwork.lock().unwrap().get(&p.artwork_url, Kind::Cover) } else { None };
+                let tex = if app.cfg.active("artwork_in_lists") { app.artwork.lock().unwrap().get(&p.artwork_url, Kind::Thumb) } else { None };
                 widgets::artwork(ui, tex.as_ref(), 46.0, 6);
                 ui.vertical(|ui| {
                     ui.label(RichText::new(&p.name).strong());

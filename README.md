@@ -159,6 +159,30 @@ Details:
   build, idle and unpaired: about 25 MB resident (≈3 MB of it private). Memory while
   streaming and on Windows has **not been measured yet**.
 
+### Portrait mode
+
+When the window is narrower than 720 px, Aqua Glass switches to a single-column
+**portrait layout**, and back above 800 px (Auto). You can also force *Landscape* or
+*Portrait* in the "…" menu or Settings › General; forcing portrait resizes the window to a
+phone-like column and restores the previous size afterwards. The portrait screen has:
+
+* a header with the RAM indicator, search and settings;
+* the **Playing** screen: large artwork, clickable title (album) and artist (artist page),
+  like, progress, the player controls, and one **Queue / Lyrics / Discover** tab at a time;
+* a mini player on other pages, and a bottom bar (Playing, Home, Search, Library).
+
+It is the same app underneath: the player, music services, Similarity Radio, library and
+artwork cache are shared, so switching never starts anything twice and playback continues
+uninterrupted. Only what is visible is built:
+
+* no sidebar, side panel or visualizer (the audio tap stays off);
+* only the active tab is drawn, and the tab you picked is remembered;
+* the queue is virtualised: only visible rows exist and load artwork, even with 500 songs
+  queued;
+* covers not on screen are released whenever the layout switches.
+
+Measured memory for both layouts is in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+
 ### EQ for Spotify songs (Equalizer APO)
 
 Spotify Soloist outputs its audio straight to Windows, so Aqua Glass' built-in EQ can't

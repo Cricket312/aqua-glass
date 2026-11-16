@@ -214,6 +214,14 @@ fn app_menu(app: &mut AquaApp, ui: &mut Ui) {
             ui.close();
         }
         ui.separator();
+        ui.label(RichText::new("Layout").small().weak());
+        for (m, l) in [(crate::config::LayoutMode::Auto, "Auto (follow window width)"), (crate::config::LayoutMode::Landscape, "Landscape"), (crate::config::LayoutMode::Portrait, "Portrait")] {
+            if ui.radio(app.cfg.general.layout_mode == m, l).clicked() {
+                app.set_layout_mode(m, ui.ctx());
+                ui.close();
+            }
+        }
+        ui.separator();
         if ui.button("Disable all visual customizations").clicked() {
             app.cfg.disable_all_visual();
             app.mark_dirty();
@@ -386,7 +394,7 @@ fn player_bar(app: &mut AquaApp, ui: &mut Ui) {
         ui.allocate_ui_with_layout(egui::vec2(side_w, h), egui::Layout::left_to_right(egui::Align::Center), |ui| {
             let art = (h - 6.0).clamp(40.0, 64.0);
             if let Some(t) = &st.current {
-                let tex = app.artwork.lock().unwrap().get(&t.artwork_url, Kind::Cover);
+                let tex = app.artwork.lock().unwrap().get(&t.artwork_url, Kind::Thumb);
                 if widgets::artwork(ui, tex.as_ref(), art, 6).on_hover_text("Now Playing").clicked() {
                     app.navigate(Page::NowPlaying);
                 }
@@ -701,7 +709,7 @@ fn queue_tab(app: &mut AquaApp, ui: &mut Ui) {
     if let Some(t) = &st.current {
         section_label(ui, "Now Playing");
         ui.horizontal(|ui| {
-            let tex = app.artwork.lock().unwrap().get(&t.artwork_url, Kind::Cover);
+            let tex = app.artwork.lock().unwrap().get(&t.artwork_url, Kind::Thumb);
             widgets::artwork(ui, tex.as_ref(), 60.0, 6);
             ui.vertical(|ui| {
                 ui.set_max_width(ui.available_width() - 34.0);
@@ -788,7 +796,7 @@ fn radio_tab(app: &mut AquaApp, ui: &mut Ui) {
     }
 }
 
-fn queue_row(app: &mut AquaApp, ui: &mut Ui, t: &crate::model::Track, i: usize, radio: bool, cmd: &mut Option<Cmd>) {
+pub(super) fn queue_row(app: &mut AquaApp, ui: &mut Ui, t: &crate::model::Track, i: usize, radio: bool, cmd: &mut Option<Cmd>) {
     let w = ui.available_width();
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, 56.0), egui::Sense::click());
     let v = ui.visuals().clone();
@@ -796,7 +804,7 @@ fn queue_row(app: &mut AquaApp, ui: &mut Ui, t: &crate::model::Track, i: usize, 
         ui.painter().rect_filled(rect, 8, v.widgets.inactive.bg_fill.gamma_multiply(0.6));
     }
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(egui::vec2(4.0, 4.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
-    let tex = if app.cfg.active("artwork_in_lists") { app.artwork.lock().unwrap().get(&t.artwork_url, Kind::Cover) } else { None };
+    let tex = if app.cfg.active("artwork_in_lists") { app.artwork.lock().unwrap().get(&t.artwork_url, Kind::Thumb) } else { None };
     widgets::artwork(&mut child, tex.as_ref(), 46.0, 6);
     child.add_space(4.0);
     child.vertical(|ui| {

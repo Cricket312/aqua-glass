@@ -51,7 +51,7 @@ pub fn run() -> eframe::Result<()> {
     let mut vp = eframe::egui::ViewportBuilder::default()
         .with_title("Aqua Glass")
         .with_inner_size(size)
-        .with_min_inner_size([720.0, 480.0])
+        .with_min_inner_size([360.0, 480.0])
         .with_icon(std::sync::Arc::new(winint::app_icon()))
         .with_transparent(cfg.active("window_backdrop"));
     if let Some(p) = cfg.general.window_pos {

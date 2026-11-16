@@ -1,0 +1,222 @@
+{
+ "music": "tagged FLACs with embedded 600x600 covers",
+ "settle_s": 20.0,
+ "sample_s": 10.0,
+ "runs": 3,
+ "results": [
+  {
+   "layout": "landscape",
+   "preset": "Balanced",
+   "run": 0,
+   "private_ws_mb": 43.18,
+   "private_bytes_mb": 167.51,
+   "private_resident_mb": 82.68,
+   "rss_mb": 127.75,
+   "audio_stream_active": true
+  },
+  {
+   "layout": "portrait",
+   "preset": "Balanced",
+   "run": 0,
+   "private_ws_mb": 43.88,
+   "private_bytes_mb": 168.11,
+   "private_resident_mb": 83.4,
+   "rss_mb": 126.09,
+   "audio_stream_active": true
+  },
+  {
+   "layout": "landscape",
+   "preset": "Balanced",
+   "run": 1,
+   "private_ws_mb": 43.26,
+   "private_bytes_mb": 167.62,
+   "private_resident_mb": 82.7,
+   "rss_mb": 127.75,
+   "audio_stream_active": true
+  },
+  {
+   "layout": "portrait",
+   "preset": "Balanced",
+   "run": 1,
+   "private_ws_mb": 43.9,
+   "private_bytes_mb": 168.03,
+   "private_resident_mb": 83.38,
+   "rss_mb": 126.01,
+   "audio_stream_active": true
+  },
+  {
+   "layout": "landscape",
+   "preset": "Balanced",
+   "run": 2,
+   "private_ws_mb": 43.22,
+   "private_bytes_mb": 167.64,
+   "private_resident_mb": 82.4,
+   "rss_mb": 127.31,
+   "audio_stream_active": true
+  },
+  {
+   "layout": "portrait",
+   "preset": "Balanced",
+   "run": 2,
+   "private_ws_mb": 43.86,
+   "private_bytes_mb": 167.96,
+   "private_resident_mb": 83.21,
+   "rss_mb": 125.83,
+   "audio_stream_active": true
+  },
+  {
+   "layout": "landscape",
+   "preset": "FullyCustomized",
+   "run": 0,
+   "private_ws_mb": 43.86,
+   "private_bytes_mb": 170.22,
+   "private_resident_mb": 84.22,
+   "rss_mb": 129.38,
+   "audio_stream_active": true
+  },
+  {
+   "layout": "portrait",
+   "preset": "FullyCustomized",
+   "run": 0,
+   "private_ws_mb": 44.04,
+   "private_bytes_mb": 170.3,
+   "private_resident_mb": 83.72,
+   "rss_mb": 126.57,
+   "audio_stream_active": true
+  },
+  {
+   "layout": "landscape",
+   "preset": "FullyCustomized",
+   "run": 1,
+   "private_ws_mb": 43.74,
+   "private_bytes_mb": 170.15,
+   "private_resident_mb": 83.67,
+   "rss_mb": 128.88,
+   "audio_stream_active": true
+  },
+  {
+   "layout": "portrait",
+   "preset": "FullyCustomized",
+   "run": 1,
+   "private_ws_mb": 44.18,
+   "private_bytes_mb": 170.23,
+   "private_resident_mb": 83.93,
+   "rss_mb": 126.75,
+   "audio_stream_active": true
+  },
+  {
+   "layout": "landscape",
+   "preset": "FullyCustomized",
+   "run": 2,
+   "private_ws_mb": 43.81,
+   "private_bytes_mb": 170.15,
+   "private_resident_mb": 84.12,
+   "rss_mb": 129.31,
+   "audio_stream_active": true
+  },
+  {
+   "layout": "portrait",
+   "preset": "FullyCustomized",
+   "run": 2,
+   "private_ws_mb": 44.07,
+   "private_bytes_mb": 170.3,
+   "private_resident_mb": 83.7,
+   "rss_mb": 126.59,
+   "audio_stream_active": true
+  }
+ ],
+ "summary": {
+  "Balanced/landscape": {
+   "private_ws_mb": {
+    "mean": 43.22,
+    "min": 43.18,
+    "max": 43.26
+   },
+   "private_bytes_mb": {
+    "mean": 167.59,
+    "min": 167.51,
+    "max": 167.64
+   },
+   "private_resident_mb": {
+    "mean": 82.59,
+    "min": 82.4,
+    "max": 82.7
+   },
+   "rss_mb": {
+    "mean": 127.6,
+    "min": 127.31,
+    "max": 127.75
+   },
+   "all_runs_playing": true
+  },
+  "Balanced/portrait": {
+   "private_ws_mb": {
+    "mean": 43.88,
+    "min": 43.86,
+    "max": 43.9
+   },
+   "private_bytes_mb": {
+    "mean": 168.03,
+    "min": 167.96,
+    "max": 168.11
+   },
+   "private_resident_mb": {
+    "mean": 83.33,
+    "min": 83.21,
+    "max": 83.4
+   },
+   "rss_mb": {
+    "mean": 125.98,
+    "min": 125.83,
+    "max": 126.09
+   },
+   "all_runs_playing": true
+  },
+  "FullyCustomized/landscape": {
+   "private_ws_mb": {
+    "mean": 43.8,
+    "min": 43.74,
+    "max": 43.86
+   },
+   "private_bytes_mb": {
+    "mean": 170.17,
+    "min": 170.15,
+    "max": 170.22
+   },
+   "private_resident_mb": {
+    "mean": 84.0,
+    "min": 83.67,
+    "max": 84.22
+   },
+   "rss_mb": {
+    "mean": 129.19,
+    "min": 128.88,
+    "max": 129.38
+   },
+   "all_runs_playing": true
+  },
+  "FullyCustomized/portrait": {
+   "private_ws_mb": {
+    "mean": 44.1,
+    "min": 44.04,
+    "max": 44.18
+   },
+   "private_bytes_mb": {
+    "mean": 170.28,
+    "min": 170.23,
+    "max": 170.3
+   },
+   "private_resident_mb": {
+    "mean": 83.78,
+    "min": 83.7,
+    "max": 83.93
+   },
+   "rss_mb": {
+    "mean": 126.64,
+    "min": 126.57,
+    "max": 126.75
+   },
+   "all_runs_playing": true
+  }
+ }
+}

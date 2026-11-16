@@ -11,10 +11,16 @@ use std::collections::{HashMap, HashSet};
 use std::sync::mpsc;
 use std::time::Instant;
 
+/// Pixel size of `Kind::Thumb` textures (sharp at 64 px on a 2× display).
+pub const THUMB_PX: u32 = 128;
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Kind {
-    /// Thumbnail/cover scaled to max_px.
+    /// Cover scaled to max_px (large views: Now Playing, cards, banners).
     Cover,
+    /// Small list/row artwork (≤ 64 px on screen): scaled to THUMB_PX, so a row
+    /// costs 64 KB of texture instead of a full cover (≈ 350 KB at 300 px).
+    Thumb,
     /// Background: scaled to fit `px`, optionally blurred with `radius`.
     Background { px: u32, blur: u32 },
 }
@@ -220,6 +226,7 @@ fn fetch_bytes(src: &str) -> Result<Vec<u8>, String> {
 fn load(key: &Key, max_px: u32, disk_cache: bool) -> Result<ColorImage, String> {
     let (px, blur) = match key.kind {
         Kind::Cover => (max_px, 0),
+        Kind::Thumb => (THUMB_PX.min(max_px), 0),
         Kind::Background { px, blur } => (px, blur),
     };
     let remote = key.src.starts_with("http");
