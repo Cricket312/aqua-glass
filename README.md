@@ -183,17 +183,37 @@ uninterrupted. Only what is visible is built:
 
 Measured memory for both layouts is in [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
-### EQ for Spotify songs (Equalizer APO)
+### Equalizer
 
-Spotify Soloist outputs its audio straight to Windows, so Aqua Glass' built-in EQ can't
-change it. If [Equalizer APO](https://sourceforge.net/projects/equalizerapo/) is installed,
-open Settings › Audio, choose **Equalizer engine: Equalizer APO** and click **Connect**. Your
-EQ, bass boost, preamp and balance then apply to everything on that output device,
-Spotify included, while you adjust them.
+The EQ is built into Aqua Glass and needs no other software. Settings › Audio has:
 
-Equalizer APO is device-wide, so other apps on the same device are affected too while
-Aqua Glass is open. By default the EQ goes flat when Aqua Glass closes. Disconnect restores
-Equalizer APO's `config.txt` exactly.
+* the 10-band EQ (31 Hz–16 kHz, ±12 dB) and its presets;
+* bass boost (a 120 Hz shelf);
+* pre-amp and balance.
+
+Processing runs as `pre-amp → EQ bands → bass shelf → balance`, inside Aqua Glass' own
+audio output, before the audio is handed to Windows:
+
+* Changes are heard within one audio callback (about 10 ms) and glide over about 10 ms,
+  so dragging a slider doesn't click.
+* With the EQ off and everything flat, the audio is passed through untouched.
+* It only affects Aqua Glass' own audio, never other apps, the microphone or system
+  settings. Measured on a shared device: another app's sound was unchanged to 0.01 dB.
+
+What it doesn't cover:
+
+* **Spotify songs played by Spotify Soloist.** Soloist sends its audio straight to Windows,
+  so no EQ inside Aqua Glass can reach it. The EQ applies to local files, and to Spotify
+  with the optional librespot backend.
+* **Clipping protection lowers nothing by itself.** If the boosts push peaks over full
+  scale, those peaks are gently soft-clipped. The settings page tells you how far to lower
+  the pre-amp to avoid that.
+
+Aqua Glass no longer reads or changes Equalizer APO's files (versions 0.7.3–0.8 could
+drive it). If you connected Equalizer APO earlier, its `config.txt` still contains the
+line `Include: aqua-glass.txt`. Settings › Audio shows a one-time note about it. To
+remove it, delete the line in Equalizer APO's Configuration Editor, or restore
+`config.txt.before-aqua-glass`.
 
 ### Local files
 
@@ -463,7 +483,7 @@ src/                 Windows desktop app
   model/history/library/matching/radio/services.rs   re-exports of the portable crates
   audio/
     output.rs        single cpal/WASAPI output: ring buffer, volume, fades, visualizer tap
-    dsp.rs           EQ, bass shelf, preamp/ReplayGain, balance, resampler
+    dsp.rs           native EQ: lock-free settings, f64 biquads, smoothing; resampler
     engine.rs        playback engine thread (implements PlaybackControl), gapless hand-off
     spotify.rs       librespot session + custom Sink into our output
     local.rs         symphonia decoding, tag probing, folder scan

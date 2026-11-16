@@ -1,0 +1,143 @@
+{
+ "device_rate": 48000,
+ "runs": 3,
+ "eq": "0,9,0,0,0,0,0,0,-9,0",
+ "bass_db": 6.0,
+ "preamp_db": -12.0,
+ "results": [
+  {
+   "config": "off",
+   "run": 0,
+   "levels_db": {
+    "62": -21.93,
+    "1000": -21.95,
+    "8000": -22.89,
+    "3150": -20.0
+   },
+   "cpu_pct_one_core": 8.69,
+   "private_ws_mb": 42.89,
+   "private_bytes_mb": 167.41,
+   "streams_playing": 2
+  },
+  {
+   "config": "on",
+   "run": 0,
+   "levels_db": {
+    "62": -19.36,
+    "1000": -34.0,
+    "8000": -43.89,
+    "3150": -20.0
+   },
+   "cpu_pct_one_core": 8.19,
+   "private_ws_mb": 42.92,
+   "private_bytes_mb": 167.25,
+   "streams_playing": 2
+  },
+  {
+   "config": "off",
+   "run": 1,
+   "levels_db": {
+    "62": -21.93,
+    "1000": -21.95,
+    "8000": -22.89,
+    "3150": -20.0
+   },
+   "cpu_pct_one_core": 8.49,
+   "private_ws_mb": 42.92,
+   "private_bytes_mb": 167.43,
+   "streams_playing": 2
+  },
+  {
+   "config": "on",
+   "run": 1,
+   "levels_db": {
+    "62": -19.36,
+    "1000": -34.0,
+    "8000": -43.89,
+    "3150": -20.0
+   },
+   "cpu_pct_one_core": 8.64,
+   "private_ws_mb": 42.94,
+   "private_bytes_mb": 167.45,
+   "streams_playing": 2
+  },
+  {
+   "config": "off",
+   "run": 2,
+   "levels_db": {
+    "62": -21.93,
+    "1000": -21.95,
+    "8000": -22.89,
+    "3150": -20.0
+   },
+   "cpu_pct_one_core": 8.34,
+   "private_ws_mb": 43.06,
+   "private_bytes_mb": 167.46,
+   "streams_playing": 2
+  },
+  {
+   "config": "on",
+   "run": 2,
+   "levels_db": {
+    "62": -19.36,
+    "1000": -34.0,
+    "8000": -43.89,
+    "3150": -20.0
+   },
+   "cpu_pct_one_core": 8.29,
+   "private_ws_mb": 42.93,
+   "private_bytes_mb": 167.32,
+   "streams_playing": 2
+  }
+ ],
+ "summary": {
+  "expected_change_db": {
+   "62": 2.57,
+   "1000": -12.05,
+   "8000": -21.0,
+   "3150": 0.0
+  },
+  "measured_change_db": {
+   "62": 2.57,
+   "1000": -12.05,
+   "8000": -21.0,
+   "3150": 0.0
+  },
+  "cpu_pct_one_core": {
+   "off": {
+    "mean": 8.51,
+    "min": 8.34,
+    "max": 8.69
+   },
+   "on": {
+    "mean": 8.37,
+    "min": 8.19,
+    "max": 8.64
+   }
+  },
+  "private_ws_mb": {
+   "off": {
+    "mean": 42.96,
+    "min": 42.89,
+    "max": 43.06
+   },
+   "on": {
+    "mean": 42.93,
+    "min": 42.92,
+    "max": 42.94
+   }
+  },
+  "private_bytes_mb": {
+   "off": {
+    "mean": 167.43,
+    "min": 167.41,
+    "max": 167.46
+   },
+   "on": {
+    "mean": 167.34,
+    "min": 167.25,
+    "max": 167.45
+   }
+  }
+ }
+}

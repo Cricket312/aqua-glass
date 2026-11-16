@@ -1,5 +1,60 @@
 # Changelog
 
+## 0.9.0 — 2026-11-16 (built-in EQ; Equalizer APO integration removed)
+
+### Changed
+- **The equalizer runs entirely inside Aqua Glass** (`src/audio/dsp.rs`). It uses the same
+  EQ page, presets, sliders, bass boost, pre-amp and balance as before. The chain is
+  pre-amp → 10 peaking bands (Q 1.41) → 120 Hz bass shelf → balance, applied in the
+  output callback before the audio goes to Windows.
+  - **Lock-free settings:** the UI publishes them through a sequence lock over atomics.
+    The audio thread never waits, and the old `Mutex::try_lock` is gone.
+  - **Stability:** RBJ biquads in f64 (transposed direct form II). Frequency, Q and gain
+    are validated, coefficients are pole-checked, and denormals are flushed.
+  - **Click-free changes:** gain, frequency and Q glide over a ≈10 ms time constant in
+    32-frame steps. Coefficients are recalculated only for bands that are moving.
+    Turning the EQ off fades it to flat, after which processing is skipped and the audio
+    is bit-exact.
+  - **Device changes:** a new output stream (start-up or another device) starts directly
+    at the current settings, at that device's sample rate.
+  - **Clipping:** the existing soft clip, for peaks above 0.95 only, is kept. Nothing is
+    lowered automatically; Settings › Audio now says how far to lower the pre-amp when
+    the boosts exceed it.
+- The audio callback's scratch buffer is allocated up front, so it doesn't allocate on
+  the real-time thread.
+
+### Removed
+- **Equalizer APO integration:** `src/eqapo.rs`, the "Equalizer engine" choice,
+  Connect/Disconnect, "Only while playing" and "Flat on exit". Aqua Glass no longer reads,
+  writes or detects anything of Equalizer APO's.
+- Spotify songs played by **Spotify Soloist** are no longer equalised. Soloist outputs its
+  audio itself, and only Equalizer APO could reach it. The settings page says so.
+
+### Migration
+- EQ gains, preset, bass, pre-amp, balance and the EQ / bass on-off state load unchanged
+  from 0.8 settings files. The `eq_engine`, `apo_only_while_playing` and
+  `apo_flat_on_exit` keys are dropped.
+- People who had chosen the Equalizer APO engine get a one-time note in Settings › Audio.
+  Aqua Glass doesn't touch Equalizer APO's files, so the note explains how to remove the
+  `Include: aqua-glass.txt` line from its `config.txt` themselves.
+
+### Tests and measurements
+- New DSP tests:
+  - measured response vs curve at 44.1, 48 and 96 kHz;
+  - stereo separation;
+  - click-free changes;
+  - fade-to-bypass;
+  - stream start at the current settings;
+  - invalid values;
+  - torn-read-free lock-free hand-over;
+  - settings migration.
+- `examples/dsp_bench.rs`: CPU per callback and allocation count. Same cost as 0.8
+  (≈0.15 % of one core with everything on), zero allocations.
+- `bench/eq_bench.py`: records the real output while another app plays on the same
+  device. The EQ changes Aqua Glass' tones exactly as predicted (to 0.01 dB) and leaves the
+  other app's tone unchanged. App-level CPU and memory with the EQ on vs off are within
+  run-to-run noise. See docs/BENCHMARKS.md.
+
 ## 0.8.0 — 2026-11-16 (Adaptive Portrait Mode)
 
 ### Added

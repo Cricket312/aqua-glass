@@ -1,6 +1,7 @@
 //! Benchmark helper: print a settings.toml for a preset with extra toggles.
 //! usage: make_config <Minimal|Balanced|Enhanced|FullyCustomized> [+feature|-feature]... [key=value]...
-//! keys: bg_image_path=, font=, repeat=all, window=WxH, layout=Auto|Landscape|Portrait, folder=
+//! keys: bg_image_path=, font=, repeat=all, window=WxH, layout=Auto|Landscape|Portrait, folder=,
+//!       eq=g31,g62,…,g16k (dB), bass=dB, preamp=dB, volume=0..1
 use aqua_glass::config::Config;
 use aqua_glass::features::Preset;
 
@@ -36,6 +37,17 @@ fn main() {
                 "Landscape" => aqua_glass::config::LayoutMode::Landscape,
                 _ => aqua_glass::config::LayoutMode::Auto,
             };
+        } else if let Some(v) = a.strip_prefix("eq=") {
+            for (i, g) in v.split(',').take(10).enumerate() {
+                c.audio.eq_gains_db[i] = g.parse().unwrap_or(0.0);
+            }
+            c.audio.eq_preset = "Custom".into();
+        } else if let Some(v) = a.strip_prefix("bass=") {
+            c.audio.bass_db = v.parse().unwrap_or(6.0);
+        } else if let Some(v) = a.strip_prefix("preamp=") {
+            c.audio.preamp_db = v.parse().unwrap_or(0.0);
+        } else if let Some(v) = a.strip_prefix("volume=") {
+            c.playback.volume = v.parse().unwrap_or(1.0);
         } else if let Some(v) = a.strip_prefix("folder=") {
             c.services.local_folders = vec![v.into()];
         }

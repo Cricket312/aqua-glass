@@ -708,103 +708,30 @@ const EQ_PRESETS: &[(&str, [f32; 10])] = &[
     ("Loudness", [5.0, 3.0, 0.0, 0.0, -1.0, 0.0, -0.5, -2.0, 3.0, 2.0]),
 ];
 
-/// EQ/bass/balance/preamp only reach audio that Aqua Glass itself outputs —
-/// unless Equalizer APO applies them.
+/// EQ/bass/balance/preamp only reach audio that Aqua Glass itself outputs.
 pub fn soloist_audio_note(app: &AquaApp, ui: &mut Ui) {
-    if app.cfg.audio.eq_engine == crate::config::EqEngine::EqualizerApo && app.apo_linked {
-        return;
-    }
     if app.cfg.services.spotify_enabled && app.cfg.services.spotify_backend == crate::config::SpotifyBackend::Soloist {
-        widgets::warn(ui, "Spotify songs play through Spotify Soloist, which sends its audio straight to Windows — Aqua Glass' own EQ, bass boost, balance and preamp can't change them. Choose “Equalizer APO” as the equalizer engine below to apply them to Spotify too.");
+        widgets::warn(ui, "Spotify songs play through Spotify Soloist, which sends its audio straight to Windows — Aqua Glass' EQ, bass boost, balance and pre-amp can't change them. They apply to local files (and to Spotify with the librespot backend).");
     }
 }
 
-/// "Equalizer engine": Aqua Glass' own DSP or Equalizer APO. Returns "dirty".
-fn eq_engine_settings(app: &mut AquaApp, ui: &mut Ui) -> bool {
-    use crate::config::EqEngine;
-    let mut d = false;
-    widgets::section(ui, "Equalizer engine");
-    ui.horizontal(|ui| {
-        for (e, l) in [(EqEngine::AquaGlass, "Aqua Glass (local files)"), (EqEngine::EqualizerApo, "Equalizer APO (everything, incl. Spotify)")] {
-            if ui.selectable_label(app.cfg.audio.eq_engine == e, l).clicked() {
-                app.cfg.audio.eq_engine = e;
-                d = true;
-            }
-        }
-    });
-    if app.cfg.audio.eq_engine == EqEngine::AquaGlass {
-        return d;
+/// One-time note for people who used the Equalizer APO engine (≤ 0.8): Aqua Glass
+/// no longer touches Equalizer APO, so the line it added there is theirs to remove.
+fn equalizer_apo_leftover_note(app: &mut AquaApp, ui: &mut Ui) {
+    if !app.cfg.audio.apo_leftover_notice {
+        return;
     }
-    match app.apo_dir.clone() {
-        None => {
-            widgets::warn(ui, "Equalizer APO wasn't found (no config.txt in its config folder). Install it from sourceforge.net/projects/equalizerapo and, in its Configurator, tick the speakers/headphones you listen on; then click Check again.");
-            ui.horizontal(|ui| {
-                if ui.button("Check again").clicked() {
-                    app.detect_apo();
-                }
-                if ui.button("Open Equalizer APO's website").clicked() {
-                    let _ = open::that_detached("https://sourceforge.net/projects/equalizerapo/");
-                }
-            });
-        }
-        Some(dir) => {
-            if app.apo_linked {
-                widgets::ok(ui, &format!("Connected — your EQ, bass boost, preamp and balance are applied by Equalizer APO ({}).", dir.display()));
-            } else {
-                ui.label(format!("Equalizer APO found in {}.", dir.display()));
-                ui.label("Connect adds one line, “Include: aqua-glass.txt”, to its config.txt (a backup is kept as config.txt.before-aqua-glass). Your other Equalizer APO settings stay as they are.");
-            }
-            ui.horizontal(|ui| {
-                if !app.apo_linked {
-                    if ui.button("Connect to Equalizer APO").clicked() {
-                        match crate::eqapo::link(&dir) {
-                            Ok(()) => {
-                                app.detect_apo();
-                                app.toast("Connected to Equalizer APO — changes now apply to everything you hear on that device.", false);
-                            }
-                            Err(e) => app.apo_error = Some(crate::eqapo::explain(&e, &dir)),
-                        }
-                    }
-                } else if ui.button("Disconnect").clicked() {
-                    match crate::eqapo::unlink(&dir) {
-                        Ok(()) => {
-                            app.detect_apo();
-                            app.toast("Disconnected from Equalizer APO; its config.txt is back to how it was.", false);
-                        }
-                        Err(e) => app.apo_error = Some(crate::eqapo::explain(&e, &dir)),
-                    }
-                }
-                if ui.button("Open its config folder").clicked() {
-                    let _ = open::that_detached(&dir);
-                }
-            });
-            if app.apo_linked {
-                let p = crate::audio::dsp::DspParams {
-                    eq_on: app.cfg.active("eq"),
-                    eq_gains_db: app.cfg.audio.eq_gains_db,
-                    bass_on: app.cfg.active("bass_boost"),
-                    bass_db: app.cfg.audio.bass_db,
-                    ..Default::default()
-                };
-                let head = crate::audio::dsp::peak_gain_db(&p);
-                if head > 0.05 {
-                    ui.label(RichText::new(format!("Overall level lowered by {head:.1} dB so the boosts don't distort (raise Windows' volume to compensate).")).weak());
-                }
-            }
-            d |= ui.checkbox(&mut app.cfg.audio.apo_only_while_playing, "Only while Aqua Glass is playing (flat when paused or stopped)").changed();
-            d |= ui.checkbox(&mut app.cfg.audio.apo_flat_on_exit, "Set the EQ back to flat when Aqua Glass closes").changed();
-            widgets::note(ui, "Equalizer APO works on the whole output device after Windows has mixed all apps together, so it can't single out Aqua Glass: while your EQ is active it also affects other apps on that device (games, browser). “Only while playing” keeps that to the time music is actually playing. Aqua Glass' own processing is off in this mode so local files aren't processed twice. Changes reach Equalizer APO about 0.15 s after you stop moving a slider. Make sure the device you listen on is ticked in Equalizer APO's Configurator.");
-        }
+    widgets::note(ui, "The equalizer is now built into Aqua Glass and processes only Aqua Glass' own audio — Equalizer APO is no longer used, and Aqua Glass no longer reads or changes its files. If you had connected it, Equalizer APO's config.txt still contains the line “Include: aqua-glass.txt”. To remove it, delete that line in Equalizer APO's Configuration Editor (or restore config.txt.before-aqua-glass from its config folder); until then, whatever is in aqua-glass.txt keeps applying to that whole device.");
+    if ui.button("Got it").clicked() {
+        app.cfg.audio.apo_leftover_notice = false;
+        app.mark_dirty();
     }
-    if let Some(e) = &app.apo_error {
-        widgets::error(ui, e);
-    }
-    d
 }
 
 fn audio(app: &mut AquaApp, ui: &mut Ui) {
     soloist_audio_note(app, ui);
-    let mut d = eq_engine_settings(app, ui);
+    equalizer_apo_leftover_note(app, ui);
+    let mut d = false;
     ui.horizontal(|ui| {
         ui.label("Output device");
         let cur = if app.cfg.audio.device.is_empty() { "System default".to_string() } else { app.cfg.audio.device.clone() };
@@ -834,6 +761,7 @@ fn audio(app: &mut AquaApp, ui: &mut Ui) {
     slider_f(ui, "Stereo balance (L ↔ R)", &mut app.cfg.audio.balance, -1.0..=1.0, &mut d);
     slider_f(ui, "Pre-amp (dB)", &mut app.cfg.audio.preamp_db, -12.0..=6.0, &mut d);
     slider_f(ui, "Bass boost amount (dB)", &mut app.cfg.audio.bass_db, 0.0..=15.0, &mut d);
+    headroom_hint(app, ui);
     widgets::section(ui, "Equalizer");
     ui.horizontal_wrapped(|ui| {
         for (name, g) in EQ_PRESETS {
@@ -868,7 +796,7 @@ fn audio(app: &mut AquaApp, ui: &mut Ui) {
         ui.label(RichText::new("Local files").strong());
         ui.end_row();
         for (f, s, l) in [
-            ("EQ, bass, balance, visualizer", "✔ librespot only (✖ Soloist)", "✔"),
+            ("EQ, bass, balance, pre-amp, visualizer", "✔ librespot only (✖ Soloist)", "✔"),
             ("Normalization", "✔ librespot only (✖ Soloist)", "✔ ReplayGain tags"),
             ("Gapless", "✔ librespot only (✖ Soloist)", "✔"),
             ("Quality setting", "✔ librespot 96/160/320 (Soloist: Spotify's own)", "original file"),
@@ -881,6 +809,17 @@ fn audio(app: &mut AquaApp, ui: &mut Ui) {
             ui.end_row();
         }
     });
+}
+
+/// How far the EQ + bass curve peaks above the pre-amp. Nothing is lowered
+/// automatically: peaks that would clip get a gentle soft clip instead.
+fn headroom_hint(app: &AquaApp, ui: &mut Ui) {
+    let a = &app.cfg.audio;
+    let p = crate::audio::dsp::DspParams { eq_on: app.cfg.active("eq"), eq_gains_db: a.eq_gains_db, bass_on: app.cfg.active("bass_boost"), bass_db: a.bass_db, ..Default::default() };
+    let over = crate::audio::dsp::peak_gain_db(&p) + a.preamp_db;
+    if over > 0.5 {
+        ui.label(RichText::new(format!("The EQ boosts up to {over:+.1} dB. Loud peaks are softly limited; set the pre-amp {:.1} dB lower to keep them clean.", over)).small().weak());
+    }
 }
 
 fn lyrics(app: &mut AquaApp, ui: &mut Ui) {

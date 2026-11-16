@@ -242,3 +242,77 @@ Reading the numbers:
 * Both layouts stay around 43–45 MB private, far below the 200 MB target.
 * Switching layouts doesn't touch playback: the engine and providers are shared, and audio
   kept playing straight through in the switch tests.
+
+## v0.9.0 — built-in EQ (Equalizer APO integration removed)
+
+### Processing cost (`examples/dsp_bench.rs`)
+
+60 s of 48 kHz stereo noise was processed in 480-frame callbacks (10 ms, a typical
+WASAPI shared-mode period). The CPU was an Intel Xeon @ 2.10 GHz (4 vCPU VM). Each case
+ran 3 times; the table shows mean time per callback, the range across the 3 runs, and
+the share of one core for real-time playback. A counting global allocator checks for
+heap allocations in the processing loop.
+
+| Case | 0.8 engine (Mutex `try_lock`, f32) | 0.9 engine (lock-free, f64, smoothing) |
+|---|---|---|
+| EQ off (bypass) | 0.03–0.04 µs · 0.000 % | 0.03–0.04 µs · 0.000 % |
+| Pre-amp only | 0.13–0.16 µs · 0.002 % | 0.87–1.04 µs · 0.010 % |
+| 10 bands + bass + pre-amp + balance | 14.0–15.6 µs · 0.14–0.16 % | 13.5–15.5 µs · 0.13–0.16 % |
+| …while sliders change every 20 ms | 12.3–14.0 µs · 0.12–0.14 % | 14.1–16.6 µs · 0.14–0.17 % |
+| Heap allocations in the audio path | 0 | 0 |
+| Processor state / shared settings | 480 B / 72 B | 1 360 B / 80 B |
+
+What this shows:
+
+* With everything on, the new engine costs the same as the old one: about 0.15 % of one
+  core, even though it now uses f64 biquads and glides parameter changes.
+* Pre-amp only costs a little more, because the gain is applied per 32-frame block, which
+  lets it ramp. It is still about 1 µs per 10 ms.
+* Single callbacks occasionally took up to ≈0.5 ms in both engines. That is scheduling
+  noise on the shared VM; it stays well below the 10 ms budget.
+
+### End to end in the running app (`bench/eq_bench.py`)
+
+Setup:
+
+* The release build plays a local WAV containing tones at 62 Hz, 1 kHz and 8 kHz.
+* At the same time **another application** (`paplay`) plays a 3150 Hz tone on the same
+  output device.
+* The device's mix is recorded from the PulseAudio monitor and each tone is measured by
+  FFT.
+* Two configurations are compared: "off" (EQ and bass boost off), and "on" (EQ +9 dB at
+  62 Hz and −9 dB at 8 kHz, bass boost +6 dB, pre-amp −12 dB).
+* The expected change is the processor's own curve at the device rate
+  (`dsp_bench response`).
+* 3 interleaved runs at 48 kHz. Raw data: `bench/results-eq-linux-dev.json`.
+
+| Tone | Expected change | Measured change (mean of 3) |
+|---|---|---|
+| 62 Hz (Aqua Glass) | +2.57 dB | **+2.57 dB** |
+| 1 kHz (Aqua Glass) | −12.05 dB | **−12.05 dB** |
+| 8 kHz (Aqua Glass) | −21.00 dB | **−21.00 dB** |
+| 3150 Hz (**other app**, same device) | 0 dB | **0.00 dB** |
+
+The recorded output matches the curve to 0.01 dB, and the other app's audio is untouched.
+The same run with the PulseAudio sink set to 44.1 kHz and to 96 kHz (1 run each) gave the
+same changes to within 0.01 dB. This is **not** a test of other output rates, though:
+`pactl` showed Aqua Glass' stream still at 48 kHz, because PulseAudio's ALSA plug-in offers
+48 kHz and resamples. The processor itself is tested at 44.1, 48 and 96 kHz by unit tests
+(`measured_response_matches_curve_at_common_rates`). On a real Windows device it runs at
+whatever rate WASAPI's shared-mode mix format uses.
+
+Whole app while playing (Balanced preset, Now Playing; CPU = utime+stime over 20 s; memory
+sampled every 0.5 s, 3 runs):
+
+| | EQ off | EQ on | Difference |
+|---|---|---|---|
+| CPU (% of one core) | 8.51 (8.34–8.69) | 8.37 (8.19–8.64) | within run-to-run noise |
+| Private working set (`RssAnon`) | 42.96 MB (42.89–43.06) | 42.93 MB (42.92–42.94) | within noise (< 0.1 MB) |
+| Private bytes (`VmData`) | 167.43 MB | 167.34 MB | within noise (< 0.1 MB) |
+
+* **The EQ's cost doesn't show up at app level.** The UI's rendering dominates the app's
+  CPU use, and the EQ's real cost (≈0.15 % of one core, about 1.4 KB of state) is smaller
+  than the run-to-run spread.
+* **This was measured on Linux.** The Windows build was not measured: Wine doesn't report
+  private memory. The processing code is the same on Windows; only the cpal backend
+  (WASAPI shared mode) differs.

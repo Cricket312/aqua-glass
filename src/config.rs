@@ -188,22 +188,13 @@ pub struct Audio {
     pub balance: f32,
     pub buffer_ms: u32,
     pub preamp_db: f32,
-    /// Where the EQ / bass / preamp / balance are applied.
-    pub eq_engine: EqEngine,
-    /// With Equalizer APO: reset Aqua Glass' EQ to flat when Aqua Glass closes.
-    pub apo_flat_on_exit: bool,
-    /// With Equalizer APO: EQ only while Aqua Glass is playing (flat when paused),
-    /// so other apps on the device are affected as little as possible.
-    pub apo_only_while_playing: bool,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub enum EqEngine {
-    /// Inside Aqua Glass: local files (and librespot), not Spotify Soloist.
-    #[default]
-    AquaGlass,
-    /// Through Equalizer APO: everything on the output device, Soloist included.
-    EqualizerApo,
+    /// Show the one-time note about the line 0.7.3–0.8 added to Equalizer APO's
+    /// config.txt (set when a config that used the Equalizer APO engine is loaded).
+    pub apo_leftover_notice: bool,
+    /// ≤ 0.8 "eq_engine" ("AquaGlass" / "EqualizerApo"): read once for the
+    /// migration above, never written again.
+    #[serde(rename = "eq_engine", skip_serializing)]
+    pub legacy_eq_engine: Option<String>,
 }
 
 impl Default for Audio {
@@ -216,9 +207,8 @@ impl Default for Audio {
             balance: 0.0,
             buffer_ms: 500,
             preamp_db: 0.0,
-            eq_engine: EqEngine::AquaGlass,
-            apo_flat_on_exit: true,
-            apo_only_while_playing: true,
+            apo_leftover_notice: false,
+            legacy_eq_engine: None,
         }
     }
 }
@@ -564,6 +554,10 @@ impl Config {
         migrate(&mut raw);
         let mut c: Config = raw.try_into()?;
         c.version = CONFIG_VERSION;
+        // 0.9: Equalizer APO engine removed — same EQ settings, now processed natively
+        if c.audio.legacy_eq_engine.take().as_deref() == Some("EqualizerApo") {
+            c.audio.apo_leftover_notice = true;
+        }
         c.fill_missing_features();
         c.sanitize();
         Ok(c)
@@ -817,7 +811,28 @@ mod tests {
         assert!(c.on("lyrics"));
         let out = c.to_toml_string();
         assert!(!out.contains("discord"), "{out}");
-        assert!(c.audio.apo_only_while_playing, "new option defaults on");
+    }
+
+    /// 0.9 replaced the Equalizer APO engine with the built-in one: the EQ settings
+    /// carry over untouched, the old APO options disappear, and people who used
+    /// that engine get the one-time note about the line left in Equalizer APO.
+    #[test]
+    fn equalizer_apo_engine_settings_migrate_to_native_eq() {
+        let old = "version = 2\n[audio]\neq_gains_db = [5.0, 4.0, 3.0, 1.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]\neq_preset = \"Bass\"\nbass_db = 9.0\npreamp_db = -4.5\nbalance = 0.2\neq_engine = \"EqualizerApo\"\napo_flat_on_exit = false\napo_only_while_playing = true\n[features]\neq = true\nbass_boost = true\n";
+        let c = Config::from_toml_str(old).expect("loads");
+        assert_eq!(c.audio.eq_gains_db, [5.0, 4.0, 3.0, 1.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
+        assert_eq!(c.audio.eq_preset, "Bass");
+        assert_eq!((c.audio.bass_db, c.audio.preamp_db, c.audio.balance), (9.0, -4.5, 0.2));
+        assert!(c.on("eq") && c.on("bass_boost"));
+        assert!(c.audio.apo_leftover_notice);
+        let out = c.to_toml_string();
+        assert!(!out.contains("eq_engine") && !out.contains("apo_flat") && !out.contains("only_while"), "{out}");
+        // saved and loaded again: settings kept, note stays until dismissed
+        let again = Config::from_toml_str(&out).unwrap();
+        assert_eq!(again.audio, c.audio);
+        // people who never used the Equalizer APO engine see nothing
+        let plain = Config::from_toml_str("version = 2\n[audio]\neq_engine = \"AquaGlass\"\n").unwrap();
+        assert!(!plain.audio.apo_leftover_notice);
     }
 
     #[test]

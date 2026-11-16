@@ -2,7 +2,8 @@
 //!
 //! Producers (librespot sink, local-file decoder) push interleaved stereo f32
 //! at the device rate into a bounded ring buffer. The real-time callback copies
-//! samples, applies the EQ/bass/preamp/balance (so changes are heard at once),
+//! samples, applies Aqua Glass' own EQ/bass/preamp/balance (`dsp::Processor`, lock-free, so
+//! changes are heard within one callback),
 //! volume and fades and, when the visualizer is visible, copies a mono tap for
 //! the FFT. Device loss is detected via the error
 //! callback and the stream is reopened on the default device.
@@ -338,7 +339,9 @@ fn open_stream(s: &Arc<Shared>, device: &str) -> anyhow::Result<cpal::Stream> {
     let err_cb = move |e: cpal::Error| {
         *s3.device_error.lock().unwrap() = Some(e.to_string());
     };
-    let mut scratch: Vec<f32> = Vec::new();
+    // reused by every callback; sized up front so the real-time path doesn't
+    // allocate (it only grows if the device asks for an unusually large buffer)
+    let mut scratch: Vec<f32> = Vec::with_capacity(16_384);
     // one EQ state per stream (device rate); moved into the callback below
     let mut proc = Processor::new(config.sample_rate);
     let stream = match fmt {
@@ -468,13 +471,19 @@ mod live_dsp_tests {
         s.ring.lock().unwrap().extend(std::iter::repeat_n(0.1f32, 48_000 * 2));
         let mut proc = Processor::new(48_000);
         let mut scratch = Vec::new();
-        let mut out = vec![0f32; 512 * 2];
+        let mut out = vec![0f32; 480 * 2];
         fill(&s, &mut out, 2, &mut scratch, &mut proc, |x| x);
         assert!((out[100] - 0.1).abs() < 1e-4, "flat: {}", out[100]);
-        // user drags the preamp to +6 dB
+        // user drags the preamp to +6 dB: the next 10 ms callback glides there
+        // (≈10 ms time constant, so no click) instead of waiting for the buffer
         s.dsp.set(super::super::dsp::DspParams { preamp_db: 6.0206, ..Default::default() });
         fill(&s, &mut out, 2, &mut scratch, &mut proc, |x| x);
-        assert!((out[100] - 0.2).abs() < 1e-3, "+6 dB heard immediately: {}", out[100]);
+        assert!(out[2] > 0.1 && out[2] < 0.12, "starts gliding at once: {}", out[2]);
+        assert!(out[959] > 0.16, "most of the way after one callback: {}", out[959]);
+        for _ in 0..5 {
+            fill(&s, &mut out, 2, &mut scratch, &mut proc, |x| x);
+        }
+        assert!((out[959] - 0.2).abs() < 1e-3, "+6 dB settled within ≈60 ms: {}", out[959]);
         // bass boost on a low tone changes the very next buffer too
         let s = shared();
         let tone: Vec<f32> = (0..48_000).flat_map(|i| {
