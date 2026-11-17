@@ -161,8 +161,10 @@ Details:
 
 ### Portrait mode
 
-When the window is narrower than 720 px, Aqua Glass switches to a single-column
-**portrait layout**, and back above 800 px (Auto). You can also force *Landscape* or
+When the window is narrower than 720 px, or clearly taller than it is wide (height at
+least 1.4 × width, e.g. maximized on a vertical 1080×1920 monitor), Aqua Glass switches
+to a single-column **portrait layout** (Auto). It switches back above 800 px wide or below
+1.25 × width tall. You can also force *Landscape* or
 *Portrait* in the "…" menu or Settings › General; forcing portrait resizes the window to a
 phone-like column and restores the previous size afterwards. The portrait screen has:
 

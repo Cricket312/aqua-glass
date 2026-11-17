@@ -27,15 +27,24 @@ use eframe::egui::{self, Color32, RichText, Ui};
 /// minimum window width); the gap avoids flicker while resizing.
 pub const ENTER_PORTRAIT_W: f32 = 720.0;
 pub const LEAVE_PORTRAIT_W: f32 = 800.0;
+/// Tall windows (e.g. maximized on a rotated 1080×1920 monitor) also get portrait:
+/// height ≥ 1.4 × width switches, and it stays until height < 1.25 × width.
+pub const ENTER_PORTRAIT_RATIO: f32 = 1.4;
+pub const LEAVE_PORTRAIT_RATIO: f32 = 1.25;
 /// Size used when the user forces portrait from a landscape window.
 pub const PORTRAIT_WINDOW: [f32; 2] = [400.0, 860.0];
 
-/// Decide the layout for this frame (Auto uses width with hysteresis).
-pub fn wants_portrait(mode: LayoutMode, width: f32, _height: f32, was_portrait: bool) -> bool {
+/// Decide the layout for this frame. Auto: portrait when the window is too narrow
+/// for the sidebar layout, or clearly taller than wide (vertical monitor); both
+/// with hysteresis so resizing near a threshold doesn't flicker.
+pub fn wants_portrait(mode: LayoutMode, width: f32, height: f32, was_portrait: bool) -> bool {
     match mode {
         LayoutMode::Landscape => false,
         LayoutMode::Portrait => true,
-        LayoutMode::Auto => width < if was_portrait { LEAVE_PORTRAIT_W } else { ENTER_PORTRAIT_W },
+        LayoutMode::Auto => {
+            let (w_limit, ratio) = if was_portrait { (LEAVE_PORTRAIT_W, LEAVE_PORTRAIT_RATIO) } else { (ENTER_PORTRAIT_W, ENTER_PORTRAIT_RATIO) };
+            width < w_limit || height >= width.max(1.0) * ratio
+        }
     }
 }
 
@@ -396,6 +405,16 @@ mod tests {
         // once portrait, widening a little doesn't flip back (no flicker while resizing)
         assert!(wants_portrait(LayoutMode::Auto, 760.0, 860.0, true));
         assert!(!wants_portrait(LayoutMode::Auto, 820.0, 860.0, true));
+        // tall windows: maximized on a rotated 1080×1920 monitor (taskbar + title bar)
+        assert!(wants_portrait(LayoutMode::Auto, 1080.0, 1840.0, false));
+        assert!(wants_portrait(LayoutMode::Auto, 1080.0, 1920.0, false));
+        // half of that monitor, or a tall-ish window on a normal monitor: landscape
+        assert!(!wants_portrait(LayoutMode::Auto, 1080.0, 920.0, false));
+        assert!(!wants_portrait(LayoutMode::Auto, 1000.0, 1200.0, false));
+        // ratio hysteresis: 1.3 stays portrait once in it, doesn't enter it
+        assert!(!wants_portrait(LayoutMode::Auto, 1000.0, 1300.0, false));
+        assert!(wants_portrait(LayoutMode::Auto, 1000.0, 1300.0, true));
+        assert!(!wants_portrait(LayoutMode::Auto, 1000.0, 1200.0, true));
         assert!(wants_portrait(LayoutMode::Portrait, 1600.0, 900.0, false));
         assert!(!wants_portrait(LayoutMode::Landscape, 380.0, 900.0, true));
     }

@@ -614,7 +614,9 @@ impl AquaApp {
         let size = ctx.content_rect().size();
         let prev = self.cfg.general.layout_mode;
         self.cfg.general.layout_mode = m;
-        if m == LayoutMode::Portrait && size.x > portrait::LEAVE_PORTRAIT_W {
+        // a window that's already tall (vertical monitor) keeps its size
+        let tall = size.y >= size.x * portrait::LEAVE_PORTRAIT_RATIO;
+        if m == LayoutMode::Portrait && size.x > portrait::LEAVE_PORTRAIT_W && !tall {
             self.cfg.general.landscape_size = Some([size.x, size.y]);
             ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(portrait::PORTRAIT_WINDOW[0], portrait::PORTRAIT_WINDOW[1])));
         } else if prev == LayoutMode::Portrait && m != LayoutMode::Portrait && size.x < portrait::LEAVE_PORTRAIT_W {

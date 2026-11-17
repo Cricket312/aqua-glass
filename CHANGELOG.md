@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.2 — 2026-11-17 (portrait mode on vertical monitors)
+
+### Changed
+- **Auto layout also picks portrait for tall windows**, e.g. maximized on a rotated
+  1080×1920 monitor (≈1080×1840 → portrait). Rule: height ≥ 1.4 × width switches to
+  portrait; it switches back below 1.25 × width (hysteresis, no flicker while resizing). The
+  existing width rule (portrait below 720 px, back above 800 px) is unchanged. Half of a
+  vertical monitor (1080×920) or a tall-ish window on a normal monitor stays landscape.
+- Choosing *Portrait* in the "…" menu or Settings › General no longer shrinks a window that
+  is already tall to 400×860.
+
 ## 0.9.1 — 2026-11-16 (EQ controls that silently did nothing; settings never saved while running)
 
 Investigated with a local file playing in the real app (Settings › Audio driven with
