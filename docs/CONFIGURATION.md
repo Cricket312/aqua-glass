@@ -182,6 +182,7 @@ preset applies.
 | `[appearance]` | `theme` (name), `font_path`, `player_bar_layout` (`Classic`/`Centered`/`Compact`), `player_bar_height` |
 | `[background]` | `image_path`, `blur_radius` (0–80), `dim` (0–1), `opacity` (0–1), `anim_speed`, `anim_fps` (5–60), `transition_ms`, `scale` (`Fill`/`Fit`/`Stretch`/`Center`), `parallax_px` |
 | `[playback]` | `preferred_provider`, `ask_when_both`, `volume`, `muted`, `shuffle`, `repeat` (`Off`/`All`/`One`), `quality` (`Low96`/`Normal160`/`High320`), `fade_ms`, `seek_step_s`, `volume_step` |
+| `[essential]` | `auto_idle` (false), `idle_minutes` (10, 1–240), `auto_minimized` (false), `restore_layout` (true), `always_on_top` (false), `remember_size` (true), `size` ([520, 150]). Being in Essential Mode is not saved; shortcut `toggle_essential` (default `Ctrl+Shift+M`, in-app only) lives in `[shortcuts]` |
 | `[audio]` | `device` (empty = default), `eq_gains_db` (10 bands, ±12 dB at 31 Hz…16 kHz), `eq_preset`, `bass_db` (0–15), `balance` (−1…1), `buffer_ms` (100–3000), `preamp_db` (−12…6), `apo_leftover_notice` (one-time note for former Equalizer APO users). Settings files from 0.7.3–0.8 load unchanged; their `eq_engine` / `apo_*` keys are dropped |
 | `[lyrics]` | `font_size`, `bold_current`, `color`, `highlight`, `align`, `line_spacing`, `bg_opacity`, `offset_ms` |
 | `[visualizer]` | `mode` (`Bars`/`Waveform`/`Circular`/`Minimal`), `fps`, `sensitivity`, `smoothing`, `bars`, `height`, `color_a`, `color_b` |

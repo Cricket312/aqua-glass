@@ -233,6 +233,15 @@ fn playing(app: &mut AquaApp, ui: &mut Ui) {
             app.mark_dirty();
         }
     });
+    // volume: always visible under the transport, centred, scales with the column
+    ui.horizontal(|ui| {
+        let sw = (w * 0.55).clamp(120.0, 360.0);
+        let row = 28.0 + 6.0 + sw;
+        ui.add_space(((ui.available_width() - row) / 2.0).max(0.0));
+        if let Some(ch) = widgets::volume_control(ui, st.volume, st.muted, sw) {
+            app.apply_volume(ch);
+        }
+    });
     ui.add_space(6.0);
     // tabs: only the active one is built
     let mut tab = app.cfg.general.portrait_tab;

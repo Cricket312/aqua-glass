@@ -316,3 +316,72 @@ sampled every 0.5 s, 3 runs):
 * **This was measured on Linux.** The Windows build was not measured: Wine doesn't report
   private memory. The processing code is the same on Windows; only the cpal backend
   (WASAPI shared mode) differs.
+
+## v0.10.0 — Essential Mode vs landscape vs portrait
+
+`bench/essential_bench.py` runs the release build with identical settings:
+- Balanced preset, Auto layout, Now Playing / Playing screen;
+- the same queue of 40 FLACs with embedded 600×600 covers, playing through PulseAudio's
+  null sink;
+- an active audio stream checked in every sample.
+
+Sizes and procedure:
+- Landscape is 1240×780 and portrait 400×860.
+- **Essential Mode is entered from the landscape window with `Ctrl+Shift+M`** after the
+  full interface has been shown, so the numbers include what entering really releases.
+- Each mode ran 3 times, interleaved. After 20 s of settling, memory is sampled every
+  0.5 s for 10 s; CPU is utime+stime over the same 10 s.
+- Raw data: `bench/results-essential-linux-dev.json`.
+
+Linux equivalents of the Windows counters: private working set ≈ `RssAnon`, total working
+set ≈ `VmRSS`, private bytes ≈ `VmData`. The Windows build was not benchmarked (Wine
+doesn't report private memory).
+
+| Mode | Private working set | Total working set | Private bytes | CPU (% of one core) | Threads |
+|---|---|---|---|---|---|
+| Landscape | 45.65 MB (45.61–45.70) | 131.31 MB | 169.64 MB | 9.30 (9.20–9.49) | 19 |
+| Portrait | 44.98 MB (44.96–45.02) | 128.17 MB | 169.02 MB | 4.48 (4.35–4.55) | 19 |
+| **Essential** | **42.89 MB** (42.81–43.00) | **125.32 MB** | 168.86 MB | **1.65** (1.58–1.68) | 19 |
+
+**After browsing** (`--browse 3`): the same 40 files as the local library. Open the Albums
+page (10 album covers), then enter Essential Mode, then leave it.
+
+| | Albums page | Essential Mode | Back on Albums |
+|---|---|---|---|
+| Private working set | 50.24 MB (49.96–50.41) | **45.93 MB** (45.87–45.96) | 51.62 MB |
+| Total working set | 136.26 MB | **128.48 MB** | — |
+
+**Switching 20 times** in one process (`--switch 20`, Essential ⇄ landscape):
+
+| | Cycle 1 | Cycle 20 |
+|---|---|---|
+| Essential | 42.88 MB | 42.92 MB |
+| Landscape | 45.16 MB | 45.18 MB |
+
+Audio played through every switch, and no textures or caches accumulated.
+
+What this shows:
+
+* **CPU is the big win: 5.6× less than landscape.** Essential Mode redraws only on
+  changes (engine state, input) plus a 5 s housekeeping tick. Landscape redraws its
+  progress bar twice a second while playing. The 1.65 % left is mostly audio decoding and
+  output.
+* **Memory drops by what can be released:** 2.8 MB from the Now Playing screen, and
+  4.3 MB after a page of covers. Covers, page data and playlist track lists are freed, then
+  handed back to the OS once the renderer has destroyed the textures.
+  * Without that deferred hand-back the first measurement showed **no** saving: freed
+    heap stayed mapped.
+  * Back on Albums, the covers reload as they come on screen.
+* **The 30–50 MB target is met, but it was mostly met already.** Aqua Glass's baseline in
+  this environment is ≈43 MB in Essential Mode, and most of it is fixed:
+  * ≈22 MB main heap (fonts, renderer state, runtimes);
+  * two 4 MB blocks for egui's font atlas and its GPU copy;
+  * ≈8 MB of LLVM/Mesa state for the software renderer (llvmpipe) this sandbox uses.
+
+  On Windows with a GPU driver the renderer part is different; it hasn't been measured.
+* **Similarity Radio keeps working in Essential Mode.** In a separate run (40 eight-second
+  tracks, local radio), the radio added 15 recommendations, Essential Mode was entered,
+  and after the queue drained to the refill threshold it added 11 more on its own:
+  `similarity radio: added 11 recommendations (15 upcoming, 26 generated in total)`.
+* **Not measured:** GPU memory (llvmpipe has none separate), Spotify Soloist (these runs
+  use local files, no helper process), and Windows.

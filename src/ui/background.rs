@@ -18,6 +18,15 @@ pub struct BgState {
     cur: Option<egui::TextureHandle>,
 }
 
+impl BgState {
+    /// Drop the background image textures (reloaded when the background is painted again).
+    pub fn release(&mut self) {
+        self.cur = None;
+        self.prev = None;
+        self.cur_src.clear();
+    }
+}
+
 pub fn paint(app: &mut AquaApp, ui: &mut Ui) {
     let rect = ui.max_rect();
     let painter = ui.ctx().layer_painter(egui::LayerId::background());

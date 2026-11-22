@@ -57,13 +57,17 @@ pub fn provider_color(p: ProviderKind) -> Color32 {
 /// Small coloured provider tag ("SP", "LO"; "YT" only for pre-0.6 data).
 pub fn provider_badge(ui: &mut Ui, p: ProviderKind) -> egui::Response {
     let c = provider_color(p);
-    let r = egui::Frame::new()
-        .fill(c.gamma_multiply(0.18))
-        .stroke(egui::Stroke::new(1.0, c.gamma_multiply(0.7)))
-        .corner_radius(4)
-        .inner_margin(egui::Margin::symmetric(4, 0))
-        .show(ui, |ui| ui.label(RichText::new(p.short()).small().color(c).strong()))
-        .response;
+    let font = egui::FontId::proportional(9.5);
+    let galley = ui.painter().layout_no_wrap(p.short().to_string(), font, c);
+    let size = galley.size() + egui::vec2(8.0, 3.0);
+    // fixed-size pill, vertically centred in whatever row it sits in
+    let (rect, r) = ui.allocate_exact_size(egui::vec2(size.x, size.y), egui::Sense::hover());
+    if ui.is_rect_visible(rect) {
+        let p = ui.painter();
+        p.rect_filled(rect, 4, c.gamma_multiply(0.14));
+        p.rect_stroke(rect, 4, egui::Stroke::new(1.0, c.gamma_multiply(0.55)), egui::StrokeKind::Inside);
+        p.galley(rect.center() - galley.size() / 2.0, galley, c);
+    }
     r.on_hover_text(p.label())
 }
 
@@ -144,9 +148,9 @@ pub fn heading(ui: &mut Ui, text: &str) {
 }
 
 pub fn section(ui: &mut Ui, text: &str) {
-    ui.add_space(14.0);
-    ui.label(RichText::new(text).strong().size(16.0));
-    ui.add_space(4.0);
+    ui.add_space(16.0);
+    ui.label(RichText::new(text).strong().size(17.0).color(ui.visuals().strong_text_color()));
+    ui.add_space(6.0);
 }
 
 pub fn note(ui: &mut Ui, text: &str) {
@@ -467,6 +471,145 @@ pub fn play_button(ui: &mut Ui, playing: bool, fill: Color32, glyph: Color32, ti
         let f = if resp.hovered() { fill.gamma_multiply(1.12) } else { fill };
         p.circle_filled(rect.center(), 20.0, f);
         paint_transport(p, rect.center(), 15.0, if playing { Transport::Pause } else { Transport::Play }, glyph);
+    }
+    resp.on_hover_text(tip).clicked()
+}
+
+/// What the user did with a [`volume_control`].
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum VolumeChange {
+    Set(f32),
+    ToggleMute,
+}
+
+/// Vector speaker icon: waves follow the level; a cross when muted.
+pub fn paint_speaker(p: &egui::Painter, c: egui::Pos2, s: f32, level: f32, muted: bool, color: Color32) {
+    use egui::pos2;
+    let st = egui::Stroke::new((s * 0.11).max(1.2), color);
+    let x0 = c.x - s * 0.45;
+    // box + cone
+    p.add(egui::Shape::convex_polygon(
+        vec![
+            pos2(x0, c.y - s * 0.16),
+            pos2(x0 + s * 0.2, c.y - s * 0.16),
+            pos2(x0 + s * 0.45, c.y - s * 0.38),
+            pos2(x0 + s * 0.45, c.y + s * 0.38),
+            pos2(x0 + s * 0.2, c.y + s * 0.16),
+            pos2(x0, c.y + s * 0.16),
+        ],
+        color,
+        egui::Stroke::NONE,
+    ));
+    let cx = x0 + s * 0.5;
+    if muted || level <= 0.001 {
+        let (a, b) = (cx + s * 0.12, cx + s * 0.42);
+        p.line_segment([pos2(a, c.y - s * 0.15), pos2(b, c.y + s * 0.15)], st);
+        p.line_segment([pos2(a, c.y + s * 0.15), pos2(b, c.y - s * 0.15)], st);
+        return;
+    }
+    let waves = if level > 0.66 { 3 } else if level > 0.33 { 2 } else { 1 };
+    for i in 0..waves {
+        let r = s * (0.16 + 0.15 * i as f32);
+        let pts: Vec<egui::Pos2> = (0..=8).map(|k| {
+            let a = -0.85 + 1.7 * k as f32 / 8.0;
+            pos2(cx + r * a.cos(), c.y + r * a.sin())
+        }).collect();
+        p.add(egui::Shape::line(pts, st));
+    }
+}
+
+/// Speaker (mute toggle) + volume slider, used by every playback layout so they
+/// look and behave the same. Scroll over it to adjust; the percentage shows while
+/// hovering or dragging. Returns what changed; the caller applies it.
+pub fn volume_control(ui: &mut Ui, volume: f32, muted: bool, slider_w: f32) -> Option<VolumeChange> {
+    let mut out = None;
+    let slider_w = slider_w.max(40.0);
+    // fixed left-to-right row, also inside right-to-left bars (player bar)
+    let size = egui::vec2(28.0 + 6.0 + slider_w + 4.0, 32.0);
+    ui.allocate_ui_with_layout(size, egui::Layout::left_to_right(egui::Align::Center), |ui| {
+        ui.spacing_mut().item_spacing.x = 6.0;
+        let (rect, resp) = ui.allocate_exact_size(egui::vec2(28.0, 32.0), egui::Sense::click());
+        if ui.is_rect_visible(rect) {
+            if resp.hovered() {
+                ui.painter().circle_filled(rect.center(), 14.0, ui.visuals().widgets.hovered.weak_bg_fill.gamma_multiply(0.6));
+            }
+            let col = if muted { ui.visuals().weak_text_color() } else { ui.visuals().text_color() };
+            paint_speaker(ui.painter(), rect.center(), 16.0, volume, muted, col);
+        }
+        if resp.on_hover_text(if muted { "Unmute" } else { "Mute" }).clicked() {
+            out = Some(VolumeChange::ToggleMute);
+        }
+        let mut v = if muted { 0.0 } else { volume };
+        ui.spacing_mut().slider_width = slider_w;
+        let r = ui.add(egui::Slider::new(&mut v, 0.0..=1.0).show_value(false).trailing_fill(true));
+        if r.changed() {
+            out = Some(VolumeChange::Set(v));
+        }
+        // scroll over the speaker or slider: 5 % per notch (consumed so the page doesn't scroll)
+        let hover = r.hovered() || ui.rect_contains_pointer(rect);
+        if hover {
+            // raw wheel events, accumulated: one notch = 5 % (points: 50 pt per notch);
+            // trackpads add up the same way; the smoothed copy is consumed so the
+            // page underneath doesn't scroll too
+            let notches: f32 = ui.input_mut(|i| {
+                i.smooth_scroll_delta.y = 0.0;
+                i.events.iter().map(|e| match e {
+                    egui::Event::MouseWheel { unit, delta, .. } => match unit {
+                        egui::MouseWheelUnit::Line => delta.y,
+                        egui::MouseWheelUnit::Point => delta.y / 50.0,
+                        egui::MouseWheelUnit::Page => delta.y * 4.0,
+                    },
+                    _ => 0.0,
+                }).sum()
+            });
+            let id = ui.scope_id().with("vol-scroll");
+            let mut acc: f32 = ui.data(|d| d.get_temp(id)).unwrap_or(0.0) + notches;
+            let steps = acc.trunc();
+            if steps != 0.0 {
+                acc -= steps;
+                let nv = ((if muted { 0.0 } else { volume }) + steps * 0.05).clamp(0.0, 1.0);
+                v = nv;
+                out = Some(VolumeChange::Set(nv));
+            }
+            ui.data_mut(|d| d.insert_temp(id, acc));
+        }
+        if hover || r.dragged() {
+            let pct = format!("{:.0}%", v * 100.0);
+            let knob_x = r.rect.left() + (r.rect.width() - 8.0) * v + 4.0;
+            let pos = egui::pos2(knob_x, r.rect.top() - 4.0);
+            let painter = ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Tooltip, ui.scope_id().with("vol-pct")));
+            let font = egui::FontId::proportional(11.0);
+            let galley = painter.layout_no_wrap(pct, font, ui.visuals().strong_text_color());
+            let bg = egui::Rect::from_center_size(pos - egui::vec2(0.0, galley.size().y / 2.0 + 3.0), galley.size() + egui::vec2(10.0, 4.0));
+            painter.rect_filled(bg, 4, ui.visuals().widgets.noninteractive.bg_fill);
+            painter.rect_stroke(bg, 4, ui.visuals().widgets.noninteractive.bg_stroke, egui::StrokeKind::Inside);
+            painter.galley(bg.center() - galley.size() / 2.0, galley, Color32::WHITE);
+        }
+    });
+    out
+}
+
+/// Frameless "expand" icon button (two diagonal arrows), vector-drawn so it never
+/// depends on a font having the glyph.
+pub fn expand_button(ui: &mut Ui, color: Color32, tip: &str) -> bool {
+    use egui::pos2;
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(28.0, 28.0), egui::Sense::click());
+    if ui.is_rect_visible(rect) {
+        let p = ui.painter();
+        if resp.hovered() {
+            p.circle_filled(rect.center(), 13.0, ui.visuals().widgets.hovered.weak_bg_fill.gamma_multiply(0.6));
+        }
+        let c = rect.center();
+        let st = egui::Stroke::new(1.6, color);
+        let (a, b) = (4.0, 7.0);
+        // top-right arrow
+        p.line_segment([pos2(c.x + 1.0, c.y - 1.0), pos2(c.x + b, c.y - b)], st);
+        p.line_segment([pos2(c.x + b - a, c.y - b), pos2(c.x + b, c.y - b)], st);
+        p.line_segment([pos2(c.x + b, c.y - b), pos2(c.x + b, c.y - b + a)], st);
+        // bottom-left arrow
+        p.line_segment([pos2(c.x - 1.0, c.y + 1.0), pos2(c.x - b, c.y + b)], st);
+        p.line_segment([pos2(c.x - b + a, c.y + b), pos2(c.x - b, c.y + b)], st);
+        p.line_segment([pos2(c.x - b, c.y + b), pos2(c.x - b, c.y + b - a)], st);
     }
     resp.on_hover_text(tip).clicked()
 }

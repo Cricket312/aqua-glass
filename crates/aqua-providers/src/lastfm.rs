@@ -70,6 +70,25 @@ pub fn parse_top_tracks(v: &serde_json::Value) -> Vec<Similar> {
         .collect()
 }
 
+/// Plain-text biography summary from an `artist.getInfo` response: Last.fm's HTML
+/// "Read more on Last.fm" link and other tags removed, whitespace tidied.
+pub fn parse_bio(v: &serde_json::Value) -> Option<String> {
+    let raw = v["artist"]["bio"]["summary"].as_str()?;
+    let cut = raw.find("<a href").map(|i| &raw[..i]).unwrap_or(raw);
+    let mut out = String::with_capacity(cut.len());
+    let mut in_tag = false;
+    for ch in cut.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            c if !in_tag => out.push(c),
+            _ => {}
+        }
+    }
+    let text = out.replace("&amp;", "&").replace("&quot;", "\"").replace("&#39;", "'").split_whitespace().collect::<Vec<_>>().join(" ");
+    (text.len() > 20).then_some(text)
+}
+
 impl LastFm {
     pub fn new(key: &str) -> LastFm {
         LastFm { key: key.trim().to_string(), cache: Mutex::new(VecDeque::new()) }
@@ -129,6 +148,11 @@ impl LastFm {
         Ok(parse_top_tracks(&self.call(&[("method", "artist.gettoptracks"), ("artist", artist), ("limit", &l)])?))
     }
 
+    /// Short artist biography (Last.fm's `artist.getInfo` summary), if Last.fm has one.
+    pub fn artist_bio(&self, artist: &str) -> anyhow::Result<Option<String>> {
+        Ok(parse_bio(&self.call(&[("method", "artist.getinfo"), ("artist", artist)])?))
+    }
+
     /// Validate the key with a cheap call.
     pub fn check(&self) -> anyhow::Result<()> {
         self.similar_artists("Radiohead", 1).map(|_| ())
@@ -156,5 +180,16 @@ mod tests {
         let t = parse_top_tracks(&tt);
         assert_eq!(t[0].listeners, Some(1_200_000));
         assert!(parse_similar_tracks(&serde_json::Value::Null).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod bio_tests {
+    #[test]
+    fn bio_is_plain_text_without_the_read_more_link() {
+        let v = serde_json::json!({"artist": {"bio": {"summary": "Radiohead are an English <b>rock</b> band formed in Abingdon in 1985. <a href=\"https://www.last.fm/music/Radiohead\">Read more on Last.fm</a>"}}});
+        assert_eq!(super::parse_bio(&v).unwrap(), "Radiohead are an English rock band formed in Abingdon in 1985.");
+        assert!(super::parse_bio(&serde_json::json!({"artist": {"bio": {"summary": " <a href=\"x\">Read more</a>"}}})).is_none());
+        assert!(super::parse_bio(&serde_json::Value::Null).is_none());
     }
 }

@@ -9,10 +9,90 @@ use crate::model::*;
 use crate::util::fmt_ms;
 use eframe::egui::{self, Color32, RichText, Ui};
 
+/// In landscape the top bar has back/forward arrows, so pages don't add their own
+/// (one navigation control, not two); portrait has no top bar arrows.
 fn back_button(app: &mut AquaApp, ui: &mut Ui) {
-    if !app.back.is_empty() && ui.button("‹ Back").clicked() {
+    if app.portrait && !app.back.is_empty() && ui.button("‹ Back").clicked() {
         app.go_back();
     }
+}
+
+// ----------------------------------------------------------------------------
+// Artist links
+
+/// Comma-separated artist names, each a link to its artist page (Spotify: by id,
+/// or looked up by name; local files: the local artist page). Used everywhere a
+/// track's artists are shown so every place navigates the same way.
+pub fn artist_links(app: &mut AquaApp, ui: &mut Ui, t: &Track, size: f32, color: Color32) {
+    let mut go = None;
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 0.0;
+        for (i, a) in t.artists.iter().enumerate() {
+            if i > 0 {
+                ui.label(RichText::new(", ").size(size).color(color));
+            }
+            let r = ui.add(egui::Label::new(RichText::new(a).size(size).color(color)).truncate().sense(egui::Sense::click()));
+            if link(ui, r).on_hover_text(format!("Go to artist: {a}")).clicked() {
+                go = Some(i);
+            }
+        }
+    });
+    if let Some(i) = go {
+        let t = t.clone();
+        app.open_artist_of(&t, i);
+    }
+}
+
+/// Artist names of an album (names only: albums don't carry artist ids).
+fn album_artist_links(app: &mut AquaApp, ui: &mut Ui, al: &Album) {
+    let mut go = None;
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 0.0;
+        for (i, a) in al.artists.iter().enumerate() {
+            if i > 0 {
+                ui.label(RichText::new(", ").weak());
+            }
+            let r = ui.add(egui::Label::new(RichText::new(a).strong()).sense(egui::Sense::click()));
+            if link(ui, r).on_hover_text(format!("Go to artist: {a}")).clicked() {
+                go = Some(a.clone());
+            }
+        }
+        if !al.release_date.is_empty() {
+            ui.label(RichText::new(format!("  ·  {}", al.release_date.get(..4).unwrap_or(&al.release_date))).weak());
+        }
+    });
+    if let Some(name) = go {
+        app.navigate(Page::Artist(Artist { provider: al.provider, id: String::new(), name, ..Default::default() }));
+    }
+}
+
+/// The Play (accent pill) + Shuffle pair used on playlist, album and artist pages.
+/// Returns (play clicked, shuffle clicked).
+fn play_shuffle(app: &AquaApp, ui: &mut Ui, enabled: bool) -> (bool, bool) {
+    let accent = app.accent();
+    let play = egui::Button::new(RichText::new(format!("{}  Play", icon::PLAY())).color(ui.visuals().extreme_bg_color).strong()).fill(accent).corner_radius(16).min_size(egui::vec2(84.0, 30.0));
+    let p = ui.add_enabled(enabled, play).on_disabled_hover_text("Nothing playable loaded yet").clicked();
+    let s = ui.add_enabled(enabled, egui::Button::new(format!("{}  Shuffle", icon::SHUFFLE())).corner_radius(16).min_size(egui::vec2(84.0, 30.0))).clicked();
+    (p, s)
+}
+
+/// Play a list in order (shuffle off) or shuffled from a random start.
+fn play_tracks(app: &mut AquaApp, t: &[Track], shuffle: bool, from: super::PlayFrom) {
+    if t.is_empty() {
+        return;
+    }
+    app.engine.send(Cmd::SetShuffle(shuffle));
+    app.cfg.playback.shuffle = shuffle;
+    app.mark_dirty();
+    let start = if shuffle { rand::random_range(0..t.len()) } else { 0 };
+    app.play_list(t.to_vec(), start, from);
+}
+
+fn link(ui: &Ui, r: egui::Response) -> egui::Response {
+    if r.hovered() {
+        ui.painter().hline(r.rect.x_range(), r.rect.bottom() - 1.0, egui::Stroke::new(1.0, ui.visuals().text_color()));
+    }
+    r.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
 // ----------------------------------------------------------------------------
@@ -44,76 +124,86 @@ pub fn track_list(app: &mut AquaApp, ui: &mut Ui, tracks: &[Track], id_salt: &st
             }
         }
         for i in range {
-            let t = &tracks[i];
-            let playing = cur_key.as_deref() == Some(&t.key());
-            let w_all = ui.available_width();
-            let r = ui
-                .allocate_ui_with_layout(egui::vec2(w_all, row_h), egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                    ui.set_height(row_h);
-                    ui.add_sized([36.0, row_h], egui::Label::new(RichText::new(if playing { icon::NOW().to_string() } else { (i + 1).to_string() }).weak()));
-                    if thumbs {
-                        let tex = app.artwork.lock().unwrap().get(&t.artwork_url, Kind::Thumb);
-                        widgets::artwork(ui, tex.as_ref(), row_h - 6.0, 4);
-                    }
-                    let w = ui.available_width();
-                    ui.allocate_ui_with_layout(egui::vec2(w * 0.45, row_h), egui::Layout::top_down(egui::Align::Min), |ui| {
-                        let mut title = RichText::new(&t.title);
-                        if playing {
-                            title = title.color(accent).strong();
-                        }
-                        if t.unavailable {
-                            title = title.strikethrough().weak();
-                        }
-                        ui.add(egui::Label::new(title).truncate());
-                        ui.add(egui::Label::new(RichText::new(t.artist_line()).small().weak()).truncate());
-                    });
-                    ui.allocate_ui_with_layout(egui::vec2(w * 0.30, row_h), egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                        ui.add(egui::Label::new(RichText::new(&t.album).weak()).truncate());
-                    });
-                    widgets::provider_badge(ui, t.provider);
-                    if t.explicit {
-                        ui.label(RichText::new("E").small().weak()).on_hover_text("Explicit");
-                    }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.menu_button(icon::MORE(), |ui| {
-                            if ui.button("Play next").clicked() {
-                                act = Some(RowAction::Next(t.clone()));
-                                ui.close();
-                            }
-                            if ui.button("Add to queue").clicked() {
-                                act = Some(RowAction::Queue(t.clone()));
-                                ui.close();
-                            }
-                            if t.provider != ProviderKind::Local && ui.button(format!("{} Like", icon::HEART())).clicked() {
-                                act = Some(RowAction::Like(t.clone()));
-                                ui.close();
-                            }
-                            if !t.album_id.is_empty() && t.provider == ProviderKind::Spotify && ui.button("Go to album").clicked() {
-                                act = Some(RowAction::GoAlbum(t.clone()));
-                                ui.close();
-                            }
-                            if t.provider == ProviderKind::Local && ui.button("Find on Spotify…").clicked() {
-                                act = Some(RowAction::Alternatives(t.clone()));
-                                ui.close();
-                            }
-                            if t.provider != ProviderKind::Local && ui.button(format!("Open in browser {}", icon::EXTERNAL())).clicked() {
-                                act = Some(RowAction::Open(t.clone()));
-                                ui.close();
-                            }
-                        });
-                        ui.label(RichText::new(fmt_ms(t.duration_ms)).monospace().weak());
-                    });
-                })
-                .response;
-            let r = r.interact(egui::Sense::click());
-            if r.double_clicked() {
-                act = Some(RowAction::Play(i));
-            }
-            if r.hovered() && app.cfg.active("hover_effects") {
-                ui.painter().rect_filled(r.rect, 4, accent.gamma_multiply(0.06));
+            if let Some(a) = track_row(app, ui, &tracks[i], i, row_h, cur_key.as_deref(), thumbs, accent) {
+                act = Some(a);
             }
         }
     });
+    act
+}
+
+/// One track row (shared by the virtualized list and short static lists).
+#[allow(clippy::too_many_arguments)]
+fn track_row(app: &mut AquaApp, ui: &mut Ui, t: &Track, i: usize, row_h: f32, cur_key: Option<&str>, thumbs: bool, accent: Color32) -> Option<RowAction> {
+    let mut act = None;
+        let playing = cur_key == Some(t.key().as_str());
+        let w_all = ui.available_width();
+        let r = ui
+            .allocate_ui_with_layout(egui::vec2(w_all, row_h), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                ui.set_height(row_h);
+                ui.add_sized([36.0, row_h], egui::Label::new(RichText::new(if playing { icon::NOW().to_string() } else { (i + 1).to_string() }).weak()));
+                if thumbs {
+                    let tex = app.artwork.lock().unwrap().get(&t.artwork_url, Kind::Thumb);
+                    widgets::artwork(ui, tex.as_ref(), row_h - 6.0, 4);
+                }
+                let w = ui.available_width();
+                ui.allocate_ui_with_layout(egui::vec2(w * 0.45, row_h), egui::Layout::top_down(egui::Align::Min), |ui| {
+                    let mut title = RichText::new(&t.title);
+                    if playing {
+                        title = title.color(accent).strong();
+                    }
+                    if t.unavailable {
+                        title = title.strikethrough().weak();
+                    }
+                    ui.add(egui::Label::new(title).truncate());
+                    let weak = ui.visuals().weak_text_color();
+                    artist_links(app, ui, t, 12.0, weak);
+                });
+                ui.allocate_ui_with_layout(egui::vec2(w * 0.30, row_h), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    ui.add(egui::Label::new(RichText::new(&t.album).weak()).truncate());
+                });
+                widgets::provider_badge(ui, t.provider);
+                if t.explicit {
+                    ui.label(RichText::new("E").small().weak()).on_hover_text("Explicit");
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.menu_button(icon::MORE(), |ui| {
+                        if ui.button("Play next").clicked() {
+                            act = Some(RowAction::Next(t.clone()));
+                            ui.close();
+                        }
+                        if ui.button("Add to queue").clicked() {
+                            act = Some(RowAction::Queue(t.clone()));
+                            ui.close();
+                        }
+                        if t.provider != ProviderKind::Local && ui.button(format!("{} Like", icon::HEART())).clicked() {
+                            act = Some(RowAction::Like(t.clone()));
+                            ui.close();
+                        }
+                        if !t.album_id.is_empty() && t.provider == ProviderKind::Spotify && ui.button("Go to album").clicked() {
+                            act = Some(RowAction::GoAlbum(t.clone()));
+                            ui.close();
+                        }
+                        if t.provider == ProviderKind::Local && ui.button("Find on Spotify…").clicked() {
+                            act = Some(RowAction::Alternatives(t.clone()));
+                            ui.close();
+                        }
+                        if t.provider != ProviderKind::Local && ui.button(format!("Open in browser {}", icon::EXTERNAL())).clicked() {
+                            act = Some(RowAction::Open(t.clone()));
+                            ui.close();
+                        }
+                    });
+                    ui.label(RichText::new(fmt_ms(t.duration_ms)).monospace().weak());
+                });
+            })
+            .response;
+        let r = r.interact(egui::Sense::click());
+        if r.double_clicked() {
+            act = Some(RowAction::Play(i));
+        }
+        if r.hovered() && app.cfg.active("hover_effects") {
+            ui.painter().rect_filled(r.rect, 4, accent.gamma_multiply(0.06));
+        }
     act
 }
 
@@ -352,20 +442,35 @@ pub fn albums_page(app: &mut AquaApp, ui: &mut Ui) {
 }
 
 fn playlist_header(app: &mut AquaApp, ui: &mut Ui, art: &str, title: &str, sub: &str, desc: &str, p: ProviderKind) {
+    media_header(app, ui, art, "Playlist", title, p, |_, ui| {
+        if !sub.is_empty() {
+            ui.label(RichText::new(sub).color(ui.visuals().weak_text_color()));
+        }
+        if !desc.is_empty() {
+            ui.add(egui::Label::new(RichText::new(desc).color(ui.visuals().weak_text_color())).wrap());
+        }
+    });
+}
+
+/// Shared header for playlists and albums: artwork, a small kind label, a large
+/// title, the provider tag and caller-supplied lines (artists, counts, …).
+fn media_header(app: &mut AquaApp, ui: &mut Ui, art: &str, kind: &str, title: &str, p: ProviderKind, extra: impl FnOnce(&mut AquaApp, &mut Ui)) {
+    let size = if app.portrait { 112.0 } else { 148.0 };
     ui.horizontal(|ui| {
-        let tex = app.artwork.lock().unwrap().get(art, Kind::Cover);
-        widgets::artwork(ui, tex.as_ref(), 120.0, 10);
+        let tex = if art.is_empty() { None } else { app.artwork.lock().unwrap().get(art, Kind::Cover) };
+        widgets::artwork(ui, tex.as_ref(), size, 10);
+        ui.add_space(12.0);
         ui.vertical(|ui| {
-            ui.label(RichText::new(title).heading().strong());
+            ui.add_space(if app.portrait { 4.0 } else { 18.0 });
             ui.horizontal(|ui| {
                 widgets::provider_badge(ui, p);
-                ui.label(RichText::new(sub).weak());
+                ui.label(RichText::new(kind).small().color(ui.visuals().weak_text_color()));
             });
-            if !desc.is_empty() {
-                ui.add(egui::Label::new(RichText::new(desc).weak()).wrap());
-            }
+            ui.add(egui::Label::new(RichText::new(title).size(if app.portrait { 22.0 } else { 30.0 }).strong()).wrap());
+            extra(app, ui);
         });
     });
+    ui.add_space(8.0);
 }
 
 pub fn playlist_view(app: &mut AquaApp, ui: &mut Ui, p: ProviderKind, id: &str) {
@@ -386,19 +491,10 @@ pub fn playlist_view(app: &mut AquaApp, ui: &mut Ui, p: ProviderKind, id: &str) 
     playlist_header(app, ui, &meta.artwork_url, &meta.name, &format!("{} · {} tracks · {}", meta.owner, meta.track_count, status), &meta.description, p);
     let tracks = app.playlist_tracks(p, id);
     ui.horizontal(|ui| {
-        let ok = matches!(tracks, Some(Ok(_)));
-        if ui.add_enabled(ok, egui::Button::new(format!("{}  Play", icon::PLAY()))).clicked() {
-            if let Some(Ok(t)) = &tracks {
-                app.engine.send(Cmd::SetShuffle(false));
-                app.play_list(t.clone(), 0, super::PlayFrom::Other);
-            }
-        }
-        if ui.add_enabled(ok, egui::Button::new(format!("{}  Shuffle", icon::SHUFFLE()))).clicked() {
-            if let Some(Ok(t)) = &tracks {
-                app.engine.send(Cmd::SetShuffle(true));
-                let start = rand::random_range(0..t.len().max(1));
-                app.play_list(t.clone(), start, super::PlayFrom::Other);
-            }
+        let ok = matches!(&tracks, Some(Ok(t)) if !t.is_empty());
+        let (play, shuf) = play_shuffle(app, ui, ok);
+        if let (true, Some(Ok(t))) = (play || shuf, &tracks) {
+            play_tracks(app, t, shuf, super::PlayFrom::Other);
         }
         if p != ProviderKind::Local && entry.is_some() && !imported && ui.button("Import").on_hover_text("Cache locally and keep in sync").clicked() {
             {
@@ -505,7 +601,7 @@ pub fn pick_folder() -> Option<std::path::PathBuf> {
 
 pub fn album_view(app: &mut AquaApp, ui: &mut Ui, a: &Album) {
     back_button(app, ui);
-    playlist_header(app, ui, &a.artwork_url, &a.name, &format!("{} · {}", a.artists.join(", "), a.release_date), "", a.provider);
+    media_header(app, ui, &a.artwork_url, "Album", &a.name, a.provider, |app, ui| album_artist_links(app, ui, a));
     let key = format!("album:{}", a.id);
     let tracks: Option<Result<Vec<Track>, String>> = match a.provider {
         ProviderKind::Local => {
@@ -531,16 +627,27 @@ pub fn album_view(app: &mut AquaApp, ui: &mut Ui, a: &Album) {
             }
         }
     };
-    ui.separator();
     match tracks {
         None => {
-            ui.spinner();
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label(RichText::new("Loading album…").weak());
+            });
         }
-        Some(Err(e)) => widgets::error(ui, &e),
-        Some(Ok(t)) => {
-            if ui.button(format!("{}  Play album", icon::PLAY())).clicked() {
-                app.play_list(t.clone(), 0, super::PlayFrom::Album);
+        Some(Err(e)) => {
+            widgets::error(ui, &format!("Couldn't load this album: {e}"));
+            if ui.button("Retry").clicked() {
+                app.view.live.remove(&key);
             }
+        }
+        Some(Ok(t)) => {
+            ui.horizontal(|ui| {
+                let (play, shuf) = play_shuffle(app, ui, !t.is_empty());
+                if play || shuf {
+                    play_tracks(app, &t, shuf, super::PlayFrom::Album);
+                }
+            });
+            ui.add_space(6.0);
             if let Some(act) = track_list(app, ui, &t, &key) {
                 handle_row_action(app, &t, act);
             }
@@ -550,15 +657,110 @@ pub fn album_view(app: &mut AquaApp, ui: &mut Ui, a: &Album) {
 
 pub fn artist_view(app: &mut AquaApp, ui: &mut Ui, a: &Artist) {
     back_button(app, ui);
-    playlist_header(app, ui, &a.artwork_url, &a.name, &a.genres.join(", "), "", a.provider);
-    if a.provider != ProviderKind::Spotify {
-        widgets::note(ui, "Artist pages are available for Spotify artists.");
+    match a.provider {
+        ProviderKind::Spotify => spotify_artist(app, ui, a),
+        ProviderKind::Local => local_artist(app, ui, a),
+        _ => {
+            artist_header(app, ui, &a.artwork_url, &a.name, "", a.provider, &[]);
+            widgets::note(ui, "Artist pages are available for Spotify and local artists.");
+        }
+    }
+}
+
+/// What the shared artist layout shows (only what the provider really returned).
+struct ArtistShow<'a> {
+    tracks: &'a [Track],
+    tracks_label: &'a str,
+    albums: &'a [Album],
+    singles: &'a [Album],
+    errors: &'a [(String, String)],
+}
+
+fn artist_header(app: &mut AquaApp, ui: &mut Ui, art: &str, name: &str, sub: &str, p: ProviderKind, tracks: &[Track]) {
+    ui.horizontal(|ui| {
+        let tex = if art.is_empty() { None } else { app.artwork.lock().unwrap().get(art, Kind::Cover) };
+        widgets::artwork(ui, tex.as_ref(), 148.0, 74);
+        ui.add_space(12.0);
+        ui.vertical(|ui| {
+            ui.add_space(18.0);
+            ui.label(RichText::new("Artist").small().color(ui.visuals().weak_text_color()));
+            ui.add(egui::Label::new(RichText::new(name).size(30.0).strong()).truncate());
+            ui.horizontal(|ui| {
+                widgets::provider_badge(ui, p);
+                if !sub.is_empty() {
+                    ui.label(RichText::new(sub).weak());
+                }
+            });
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                let (play, shuf) = play_shuffle(app, ui, !tracks.is_empty());
+                if play || shuf {
+                    play_tracks(app, tracks, shuf, super::PlayFrom::Artist);
+                }
+            });
+        });
+    });
+}
+
+/// Sections below the header: tracks, albums, singles, then the caller's extras.
+fn artist_sections(app: &mut AquaApp, ui: &mut Ui, show: &ArtistShow) {
+    let mut open = None;
+    if !show.tracks.is_empty() {
+        widgets::section(ui, show.tracks_label);
+        let accent = app.accent();
+        let cur = app.state.current.as_ref().map(|t| t.key());
+        let thumbs = app.cfg.active("artwork_in_lists");
+        let row_h = if thumbs { 44.0 } else { 30.0 };
+        let mut act = None;
+        for (i, t) in show.tracks.iter().enumerate() {
+            if let Some(a) = track_row(app, ui, t, i, row_h, cur.as_deref(), thumbs, accent) {
+                act = Some(a);
+            }
+        }
+        if let Some(a) = act {
+            handle_row_action(app, show.tracks, a);
+        }
+    }
+    for (label, list) in [("Albums", show.albums), ("Singles and EPs", show.singles)] {
+        if list.is_empty() {
+            continue;
+        }
+        widgets::section(ui, label);
+        ui.horizontal_wrapped(|ui| {
+            for al in list {
+                let year = al.release_date.get(..4).unwrap_or("");
+                if card(app, ui, &al.artwork_url, &al.name, year, al.provider).clicked() {
+                    open = Some(Page::Album(al.clone()));
+                }
+            }
+        });
+    }
+    for (section, e) in show.errors {
+        ui.label(RichText::new(format!("{section}: couldn't load ({e}).")).small().color(ui.visuals().weak_text_color()));
+    }
+    if let Some(p) = open {
+        app.navigate(p);
+    }
+}
+
+fn spotify_artist(app: &mut AquaApp, ui: &mut Ui, a: &Artist) {
+    if !app.spotify.is_signed_in() {
+        artist_header(app, ui, &a.artwork_url, &a.name, "", a.provider, &[]);
+        widgets::note(ui, "Sign in to Spotify (Settings › Music Services) to open artist pages.");
         return;
     }
     if a.id.is_empty() {
         // opened from a track saved without artist ids: look the artist up by name
+        artist_header(app, ui, &a.artwork_url, &a.name, "", a.provider, &[]);
         let key = format!("artist-lookup:{}", a.name);
-        if !app.view.loading.contains(&key) && app.spotify.is_signed_in() {
+        if let Some(e) = app.view.artist_lookup_err.get(&a.name).cloned() {
+            widgets::error(ui, &e);
+            if ui.button("Retry").clicked() {
+                app.view.artist_lookup_err.remove(&a.name);
+            }
+            return;
+        }
+        if !app.view.loading.contains(&key) {
             app.view.loading.insert(key);
             let api = app.spotify.clone();
             let name = a.name.clone();
@@ -567,45 +769,143 @@ pub fn artist_view(app: &mut AquaApp, ui: &mut Ui, a: &Artist) {
                 h.send(super::jobs::Msg::ArtistFound { name, res: r });
             });
         }
-        ui.separator();
-        if app.spotify.is_signed_in() {
+        ui.horizontal(|ui| {
             ui.spinner();
-        } else {
-            widgets::note(ui, "Sign in to Spotify to open artist pages.");
-        }
+            ui.label(RichText::new("Finding the artist on Spotify…").weak());
+        });
         return;
     }
-    let albums = app.view.artist_albums.get(&a.id).cloned();
-    if albums.is_none() && !app.view.loading.contains(&format!("artist:{}", a.id)) {
-        app.view.loading.insert(format!("artist:{}", a.id));
+    let key = format!("artist:{}", a.id);
+    let page = app.view.artist_pages.get(&a.id).cloned();
+    if page.is_none() && !app.view.loading.contains(&key) {
+        app.view.loading.insert(key.clone());
         let api = app.spotify.clone();
         let ar = a.clone();
         app.jobs.spawn("Load artist", move |h| {
-            let r = api.artist_albums(&ar.id).map_err(|e| e.to_string());
-            h.send(super::jobs::Msg::ArtistAlbums { artist: ar, res: r });
+            let r = api.artist_page(&ar).map_err(|e| match e {
+                crate::services::ApiError::NotFound => "Spotify doesn't know this artist (it may have been removed).".to_string(),
+                e => e.to_string(),
+            });
+            h.send(super::jobs::Msg::ArtistPage { id: ar.id, res: r });
         });
     }
-    ui.separator();
-    match albums {
+    // Last.fm extras (optional, separate so a Last.fm problem never blocks the page)
+    let name = match &page {
+        Some(Ok(p)) if !p.artist.name.is_empty() => p.artist.name.clone(),
+        _ => a.name.clone(),
+    };
+    request_artist_extra(app, &name);
+    match page {
         None => {
-            ui.spinner();
-        }
-        Some(Err(e)) => widgets::error(ui, &e),
-        Some(Ok(list)) => {
-            let mut open = None;
-            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    for al in &list {
-                        if card(app, ui, &al.artwork_url, &al.name, &al.release_date, al.provider).clicked() {
-                            open = Some(Page::Album(al.clone()));
-                        }
-                    }
-                });
+            artist_header(app, ui, &a.artwork_url, &a.name, "", a.provider, &[]);
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label(RichText::new("Loading artist…").weak());
             });
-            if let Some(p) = open {
-                app.navigate(p);
+        }
+        Some(Err(e)) => {
+            artist_header(app, ui, &a.artwork_url, &a.name, "", a.provider, &[]);
+            widgets::error(ui, &format!("Couldn't load this artist: {e}"));
+            if ui.button("Retry").clicked() {
+                app.view.artist_pages.remove(&a.id);
             }
         }
+        Some(Ok(p)) => {
+            egui::ScrollArea::vertical().id_salt("artist").auto_shrink([false, false]).show(ui, |ui| {
+                artist_header(app, ui, &p.artist.artwork_url, &p.artist.name, &p.artist.genres.iter().take(3).cloned().collect::<Vec<_>>().join(", "), p.artist.provider, &p.top_tracks);
+                let show = ArtistShow { tracks: &p.top_tracks, tracks_label: "Popular on Spotify", albums: &p.albums, singles: &p.singles, errors: &p.errors };
+                artist_sections(app, ui, &show);
+                if p.top_tracks.is_empty() && p.albums.is_empty() && p.singles.is_empty() && p.errors.is_empty() {
+                    widgets::note(ui, "Spotify returned no tracks or releases for this artist.");
+                }
+                if !p.errors.is_empty() && ui.small_button("Retry").clicked() {
+                    app.view.artist_pages.remove(&a.id);
+                }
+                artist_extra_sections(app, ui, &name, ProviderKind::Spotify);
+            });
+        }
+    }
+}
+
+fn local_artist(app: &mut AquaApp, ui: &mut Ui, a: &Artist) {
+    let k = a.name.to_lowercase();
+    if !app.view.local_artists.contains_key(&k) {
+        let mut s = app.library.lock().unwrap();
+        let tracks: Vec<Track> = s
+            .tracks(ProviderKind::Local, crate::library::LOCAL_ALL_ID)
+            .map(|v| v.iter().filter(|t| t.artists.iter().any(|x| x.to_lowercase() == k)).cloned().collect())
+            .unwrap_or_default();
+        let albums: Vec<Album> = s.lib(ProviderKind::Local).albums.iter().filter(|al| al.artists.iter().any(|x| x.to_lowercase() == k)).cloned().collect();
+        drop(s);
+        app.view.local_artists.insert(k.clone(), (tracks, albums));
+    }
+    let (tracks, albums) = app.view.local_artists.get(&k).cloned().unwrap_or_default();
+    request_artist_extra(app, &a.name);
+    let art = albums.iter().map(|al| al.artwork_url.clone()).find(|u| !u.is_empty()).unwrap_or_default();
+    egui::ScrollArea::vertical().id_salt("artist").auto_shrink([false, false]).show(ui, |ui| {
+        let sub = format!("{} songs · {} albums in your local files", tracks.len(), albums.len());
+        artist_header(app, ui, &art, &a.name, &sub, ProviderKind::Local, &tracks);
+        if tracks.is_empty() {
+            widgets::note(ui, "No local files by this artist (the artist tag must match). Rescan in Settings › Music Services › Local files if you added music.");
+        }
+        let show = ArtistShow { tracks: &tracks, tracks_label: "Songs", albums: &albums, singles: &[], errors: &[] };
+        artist_sections(app, ui, &show);
+        artist_extra_sections(app, ui, &a.name, ProviderKind::Local);
+    });
+}
+
+/// Start the Last.fm request for similar artists + biography (once per artist).
+fn request_artist_extra(app: &mut AquaApp, name: &str) {
+    let key = format!("artist-extra:{name}");
+    if app.lastfm_key.trim().is_empty() || name.is_empty() || app.view.artist_extra.contains_key(name) || app.view.loading.contains(&key) {
+        return;
+    }
+    app.view.loading.insert(key);
+    let lf = crate::services::lastfm::LastFm::new(&app.lastfm_key);
+    let name = name.to_string();
+    app.jobs.spawn("Artist info (Last.fm)", move |h| {
+        let mut extra = super::jobs::ArtistExtra::default();
+        match lf.similar_artists(&name, 12) {
+            Ok(v) => extra.similar = v.into_iter().map(|(n, _)| n).filter(|n| !n.eq_ignore_ascii_case(&name)).collect(),
+            Err(e) => extra.error = Some(e.to_string()),
+        }
+        match lf.artist_bio(&name) {
+            Ok(b) => extra.bio = b,
+            Err(e) => extra.error = extra.error.or(Some(e.to_string())),
+        }
+        h.send(super::jobs::Msg::ArtistExtra { name, extra });
+    });
+}
+
+fn artist_extra_sections(app: &mut AquaApp, ui: &mut Ui, name: &str, p: ProviderKind) {
+    if app.lastfm_key.trim().is_empty() {
+        ui.add_space(8.0);
+        ui.label(RichText::new("Similar artists and a biography come from Last.fm — add a Last.fm API key in Settings › Playback (Similarity Radio) to see them.").small().color(ui.visuals().weak_text_color()));
+        return;
+    }
+    let Some(extra) = app.view.artist_extra.get(name).cloned() else { return };
+    let mut go = None;
+    if !extra.similar.is_empty() {
+        widgets::section(ui, "Similar artists");
+        ui.horizontal_wrapped(|ui| {
+            for n in &extra.similar {
+                if ui.add(egui::Button::new(n).corner_radius(14)).on_hover_text(format!("Open {n}")).clicked() {
+                    go = Some(n.clone());
+                }
+            }
+        });
+    }
+    if let Some(bio) = &extra.bio {
+        widgets::section(ui, "About");
+        ui.add(egui::Label::new(RichText::new(bio).color(ui.visuals().text_color())).wrap());
+        ui.label(RichText::new("Biography from Last.fm").small().color(ui.visuals().weak_text_color()));
+    }
+    if let Some(e) = &extra.error {
+        ui.label(RichText::new(format!("Last.fm: {e}")).small().color(ui.visuals().weak_text_color()));
+    }
+    if let Some(n) = go {
+        // a Spotify artist opens by name lookup; a local one stays local
+        app.navigate(Page::Artist(Artist { provider: p, id: String::new(), name: n, ..Default::default() }));
     }
 }
 

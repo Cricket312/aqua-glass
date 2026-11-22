@@ -23,10 +23,13 @@ pub enum Action {
     OpenSearch,
     OpenSettings,
     SwitchProvider,
+    /// Essential Mode on/off. In-app only (never registered globally): Ctrl+Shift+M
+    /// is a common shortcut in other apps (e.g. Discord's mute) and must keep working there.
+    ToggleEssential,
 }
 
 impl Action {
-    pub const ALL: [Action; 14] = [
+    pub const ALL: [Action; 15] = [
         Action::PlayPause,
         Action::Next,
         Action::Previous,
@@ -41,6 +44,7 @@ impl Action {
         Action::OpenSearch,
         Action::OpenSettings,
         Action::SwitchProvider,
+        Action::ToggleEssential,
     ];
     pub fn id(self) -> &'static str {
         match self {
@@ -58,6 +62,7 @@ impl Action {
             Action::OpenSearch => "open_search",
             Action::OpenSettings => "open_settings",
             Action::SwitchProvider => "switch_provider",
+            Action::ToggleEssential => "toggle_essential",
         }
     }
     pub fn label(self) -> &'static str {
@@ -76,7 +81,12 @@ impl Action {
             Action::OpenSearch => "Open search",
             Action::OpenSettings => "Open settings",
             Action::SwitchProvider => "Switch music provider filter",
+            Action::ToggleEssential => "Essential Mode on / off (in Aqua Glass)",
         }
+    }
+    /// May be registered as a system-wide hotkey (Windows).
+    pub fn global(self) -> bool {
+        self != Action::ToggleEssential
     }
     pub fn from_id(s: &str) -> Option<Action> {
         Action::ALL.into_iter().find(|a| a.id() == s)
@@ -99,6 +109,7 @@ pub fn default_bindings() -> BTreeMap<String, String> {
         (Action::OpenSearch, "Ctrl+F"),
         (Action::OpenSettings, "Ctrl+Comma"),
         (Action::SwitchProvider, "Ctrl+Alt+S"),
+        (Action::ToggleEssential, "Ctrl+Shift+M"),
     ];
     d.iter().map(|(a, b)| (a.id().to_string(), b.to_string())).collect()
 }
@@ -265,5 +276,17 @@ mod tests {
             let b = Binding::parse(&s).unwrap();
             assert!(b.egui_key().is_some(), "{s}");
         }
+    }
+}
+
+#[cfg(test)]
+mod essential_shortcut_tests {
+    use super::*;
+    #[test]
+    fn essential_toggle_is_in_app_only() {
+        assert_eq!(default_bindings().get("toggle_essential").map(String::as_str), Some("Ctrl+Shift+M"));
+        assert!(!Action::ToggleEssential.global(), "never registered as a system-wide hotkey");
+        assert!(Action::ALL.iter().filter(|a| **a != Action::ToggleEssential).all(|a| a.global()));
+        assert_eq!(Action::from_id("toggle_essential"), Some(Action::ToggleEssential));
     }
 }

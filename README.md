@@ -274,6 +274,10 @@ choose; recordings are never swapped silently.
   manually, rename, and create. The source is never modified; a JSON backup and a log are
   written to `transfers\`, and you can remove a created playlist again from the history.
 * **Export:** any playlist to JSON (full metadata, re-importable), CSV or M3U.
+* **Volume** is in every layout: player bar, portrait (under the controls), mini-player and
+  Essential Mode. Click the speaker to mute, scroll over it to change the volume (a step
+  per wheel notch), and hover or drag to see the percentage. All layouts show the same
+  level, and it applies to whichever backend is playing (Soloist included).
 * **Mini-player** (button in the playback bar, tray menu or `Ctrl+Alt+N`): three
   layouts, opacity, always-on-top, remembers position and size, optional lyric line.
 * **Desktop overlay:** transparent always-on-top window with title, artist, artwork,
@@ -282,6 +286,62 @@ choose; recordings are never swapped silently.
   in Settings → Keyboard Shortcuts (with conflict detection). With "Global Hotkeys" on,
   they work system-wide; macro pads that send key combinations (e.g. F13–F24) work as-is.
   Hardware media keys and the Windows media flyout work via "Windows Media Controls".
+
+### Essential Mode
+
+For gaming, working or listening for hours with nothing else on screen. Essential Mode
+turns the window into a small bar with **only** the current song title, shuffle,
+previous, play/pause, next, repeat and the volume (with mute). The window can be resized;
+from about 600 px wide everything sits in one row.
+
+* **Enter it** with `Ctrl+Shift+M` (configurable in Settings › Keyboard Shortcuts), from
+  Settings › Appearance › Layout, the "…" menu next to the logo, or the tray menu (Windows).
+  **Leave it** with the same shortcut or the ⤢ button in its corner.
+  * The shortcut works while Aqua Glass has focus. It is deliberately not a system-wide
+    hotkey: `Ctrl+Shift+M` is used by other apps (for example Discord's mute).
+* **It releases resources, not just hides them:**
+  * cover-art textures and decoded images, and background images;
+  * page data (live playlists, artist pages, search results, other songs' lyrics) and
+    in-memory playlist track lists (they stay on disk);
+  * the visualizer's audio feed.
+
+  It also suspends lyrics requests, library auto-sync, the animated background, UI
+  animations and the mini-player/overlay windows. The window only redraws when something
+  changes, plus a 5-second housekeeping tick.
+* **Everything that plays keeps working:** playback and track changes, the queue,
+  Similarity Radio (it runs on its own thread and keeps refilling), global hotkeys, media
+  keys, listening history and the EQ.
+* **Leaving restores** the previous window size, position and layout, the page you were
+  on, the theme and animations. Covers and pages reload as you look at them. Nothing in
+  your settings is changed by entering it.
+* **Options** (Settings › Performance › Essential Mode, all off unless noted):
+  * enter after N minutes without using the Aqua Glass window;
+  * enter when the window is minimized;
+  * restore the previous layout on exit (on);
+  * always on top;
+  * remember the Essential window size (on).
+* **Measured:** CPU use drops about 5.6× (1.65 % vs 9.3 % of one core), and memory drops by
+  what you had loaded (−2.8 MB from Now Playing, −4.0 to −4.5 MB after browsing a page of
+  album covers). The rest of Aqua Glass's ≈45 MB is fixed
+  cost: renderer, fonts and audio. See [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+
+### Artist pages
+
+Click an artist anywhere — the player bar, Now Playing (both layouts), track rows in
+search results, playlists, albums and the queue, an album's header, or a search result —
+to open the artist page. Spotify artists show:
+
+* artwork, name and genres (Spotify marks genres deprecated, so they may be empty);
+* Play / Shuffle;
+* **Popular on Spotify** — Spotify removed its "artist top tracks" endpoint in February
+  2026, so these are Spotify's best search matches credited to the artist;
+* **Albums** and **Singles and EPs**;
+* with a Last.fm key: **Similar artists** and an **About** biography.
+
+Spotify no longer provides related artists, follower counts or popularity, so they
+aren't shown. Each section loads on its own: if one fails, the rest still shows with a
+note, and a **Retry** button reloads the page. **Local artists** get a page from your
+files: their songs, albums and Play / Shuffle.
 
 ## Similarity Radio
 

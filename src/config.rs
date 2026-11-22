@@ -405,6 +405,29 @@ impl Default for PerfCfg {
     }
 }
 
+/// Essential Mode (Settings › Performance › Essential Mode). Being *in* Essential
+/// Mode is runtime state only — it never changes these or any other saved settings.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct EssentialCfg {
+    /// Enter automatically after this long without using the Aqua Glass window.
+    pub auto_idle: bool,
+    pub idle_minutes: u32,
+    /// Enter automatically when the window is minimized.
+    pub auto_minimized: bool,
+    /// On exit, restore the previous window size, position and layout.
+    pub restore_layout: bool,
+    pub always_on_top: bool,
+    /// Reopen Essential Mode at the size it had last time.
+    pub remember_size: bool,
+    pub size: [f32; 2],
+}
+impl Default for EssentialCfg {
+    fn default() -> Self {
+        Self { auto_idle: false, idle_minutes: 10, auto_minimized: false, restore_layout: true, always_on_top: false, remember_size: true, size: [520.0, 150.0] }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum RightPanel {
     #[default]
@@ -451,6 +474,7 @@ pub struct Config {
     pub services: ServicesCfg,
     pub sync: SyncCfg,
     pub perf: PerfCfg,
+    pub essential: EssentialCfg,
     pub radio: RadioCfg,
     pub shortcuts: BTreeMap<String, String>,
 }
@@ -477,6 +501,7 @@ impl Default for Config {
             perf: PerfCfg::default(),
             radio: RadioCfg::default(),
             shortcuts: crate::shortcuts::default_bindings(),
+            essential: EssentialCfg::default(),
         };
         c.fill_missing_features();
         c
@@ -607,6 +632,9 @@ impl Config {
         a.balance = a.balance.clamp(-1.0, 1.0);
         a.buffer_ms = a.buffer_ms.clamp(100, 3000);
         a.preamp_db = a.preamp_db.clamp(-12.0, 6.0);
+        let e = &mut self.essential;
+        e.idle_minutes = e.idle_minutes.clamp(1, 240);
+        e.size = [if e.size[0].is_finite() { e.size[0].clamp(280.0, 1600.0) } else { 520.0 }, if e.size[1].is_finite() { e.size[1].clamp(96.0, 900.0) } else { 150.0 }];
         let v = &mut self.visualizer;
         v.fps = v.fps.clamp(5, 144);
         v.bars = v.bars.clamp(8, 128);
@@ -833,6 +861,23 @@ mod tests {
         // people who never used the Equalizer APO engine see nothing
         let plain = Config::from_toml_str("version = 2\n[audio]\neq_engine = \"AquaGlass\"\n").unwrap();
         assert!(!plain.audio.apo_leftover_notice);
+    }
+
+    /// Settings files from before 0.10 load with Essential Mode's defaults (automatic
+    /// entry off) and gain its shortcut; out-of-range values are clamped.
+    #[test]
+    fn essential_mode_settings_default_off_and_migrate() {
+        let old = "version = 2\n[shortcuts]\nplay_pause = \"Ctrl+Alt+P\"\n";
+        let c = Config::from_toml_str(old).expect("loads");
+        assert!(!c.essential.auto_idle && !c.essential.auto_minimized, "automatic entry is off by default");
+        assert!(c.essential.restore_layout && c.essential.remember_size);
+        assert_eq!(c.shortcuts.get("toggle_essential").map(String::as_str), Some("Ctrl+Shift+M"));
+        assert_eq!(c.shortcuts.get("play_pause").map(String::as_str), Some("Ctrl+Alt+P"), "user bindings kept");
+        let bad = "version = 2\n[essential]\nidle_minutes = 0\nsize = [10.0, 99999.0]\n";
+        let c = Config::from_toml_str(bad).unwrap();
+        assert_eq!(c.essential.idle_minutes, 1);
+        assert_eq!(c.essential.size, [280.0, 900.0]);
+        assert!(!c.to_toml_string().contains("essential_active"), "being in Essential Mode is never saved");
     }
 
     #[test]

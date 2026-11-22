@@ -214,23 +214,8 @@ impl SpotifyApi {
     }
 
     /// Follow `next` links.
-    fn paged(&self, first: &str, max_items: usize, mut f: impl FnMut(&Value)) -> Result<(), ApiError> {
-        let mut url = Some(first.to_string());
-        let mut n = 0;
-        while let Some(u) = url {
-            let v = self.get(&u)?;
-            // some endpoints wrap the page (e.g. /me/following › {"artists": {...}})
-            let page = if v.get("items").is_some() { &v } else { v.as_object().and_then(|o| o.values().next()).unwrap_or(&v) };
-            for it in page["items"].as_array().into_iter().flatten() {
-                f(it);
-                n += 1;
-            }
-            if n >= max_items {
-                break;
-            }
-            url = page["next"].as_str().map(|s| s.to_string());
-        }
-        Ok(())
+    fn paged(&self, first: &str, max_items: usize, f: impl FnMut(&Value)) -> Result<(), ApiError> {
+        paged_with(&|u| self.get(u), first, max_items, f)
     }
 
     pub fn me(&self) -> Result<Profile, ApiError> {
@@ -255,7 +240,7 @@ impl SpotifyApi {
     /// Items of a playlist in order. Uses `/items` (2026 API) and falls back to `/tracks`.
     pub fn playlist_items(&self, id: &str) -> Result<Vec<Track>, ApiError> {
         let mut out = Vec::new();
-        let first = format!("{API}/playlists/{id}/items?limit=100&additional_types=track");
+        let first = format!("{API}/playlists/{id}/items?limit=50&additional_types=track");
         match self.paged(&first, 100_000, |it| {
             if let Some(t) = parse_playlist_item(it) {
                 out.push(t)
@@ -264,7 +249,7 @@ impl SpotifyApi {
             Ok(()) => Ok(out),
             Err(ApiError::NotFound) => {
                 out.clear();
-                self.paged(&format!("{API}/playlists/{id}/tracks?limit=100"), 100_000, |it| {
+                self.paged(&format!("{API}/playlists/{id}/tracks?limit=50"), 100_000, |it| {
                     if let Some(t) = parse_playlist_item(it) {
                         out.push(t)
                     }
@@ -335,14 +320,9 @@ impl SpotifyApi {
         Ok(out)
     }
 
-    pub fn artist_albums(&self, artist_id: &str) -> Result<Vec<Album>, ApiError> {
-        let mut out = Vec::new();
-        self.paged(&format!("{API}/artists/{artist_id}/albums?include_groups=album,single&limit=50"), 200, |it| {
-            if let Some(a) = parse_album(it) {
-                out.push(a)
-            }
-        })?;
-        Ok(out)
+    /// Everything the artist page shows that Spotify provides (see [`load_artist_page`]).
+    pub fn artist_page(&self, artist: &Artist) -> Result<ArtistPage, ApiError> {
+        load_artist_page(&|u| self.get(u), artist)
     }
 
     pub fn search(&self, q: &str) -> Result<SearchResults, ApiError> {
@@ -385,7 +365,7 @@ impl SpotifyApi {
 
     /// Search for track candidates (used by transfer matching).
     pub fn search_tracks(&self, q: &str, limit: u32) -> Result<Vec<Track>, ApiError> {
-        let lim = limit.to_string();
+        let lim = limit.clamp(1, SEARCH_LIMIT).to_string();
         let url = url::Url::parse_with_params(&format!("{API}/search"), &[("q", q), ("type", "track"), ("limit", lim.as_str())])
             .map_err(|e| ApiError::Other(0, e.to_string()))?;
         let v = self.get(url.as_str())?;
@@ -524,6 +504,109 @@ pub fn parse_playlist(v: &Value, user_id: &str) -> Option<Playlist> {
     })
 }
 
+/// Follow `next` links with any request function (the real client or a test double).
+pub fn paged_with(get: &dyn Fn(&str) -> Result<Value, ApiError>, first: &str, max_items: usize, mut f: impl FnMut(&Value)) -> Result<(), ApiError> {
+    let mut url = Some(first.to_string());
+    let mut n = 0;
+    while let Some(u) = url {
+        let v = get(&u)?;
+        // some endpoints wrap the page (e.g. /me/following › {"artists": {...}})
+        let page = if v.get("items").is_some() { &v } else { v.as_object().and_then(|o| o.values().next()).unwrap_or(&v) };
+        for it in page["items"].as_array().into_iter().flatten() {
+            f(it);
+            n += 1;
+        }
+        if n >= max_items {
+            break;
+        }
+        url = page["next"].as_str().map(|s| s.to_string());
+    }
+    Ok(())
+}
+
+/// `GET /artists/{id}/albums` accepts at most `limit=10` since the February 2026 Web
+/// API changes (it was 50; a larger value is rejected, which left artist pages empty).
+pub const ARTIST_ALBUMS_LIMIT: u32 = 10;
+const ARTIST_ALBUMS_MAX: usize = 30;
+const ARTIST_SINGLES_MAX: usize = 20;
+/// Search allows at most `limit=10` since February 2026.
+pub const SEARCH_LIMIT: u32 = 10;
+
+/// What Spotify's Web API can still provide for an artist page. Sections load
+/// independently: a section that fails is listed in `errors` and the rest still shows.
+/// Not available any more (February 2026): "Get Artist's Top Tracks" (removed) —
+/// `top_tracks` are Spotify's best search matches for the artist instead; "Related
+/// Artists" (deprecated) and artist `followers` / `popularity` (removed).
+#[derive(Clone, Debug, Default)]
+pub struct ArtistPage {
+    pub artist: Artist,
+    pub albums: Vec<Album>,
+    pub singles: Vec<Album>,
+    pub top_tracks: Vec<Track>,
+    /// (section, message) for sections that couldn't be loaded.
+    pub errors: Vec<(String, String)>,
+}
+
+/// Load an artist page. Fails only when nothing at all could be loaded (or the
+/// artist doesn't exist); otherwise returns what it got, with per-section errors.
+pub fn load_artist_page(get: &dyn Fn(&str) -> Result<Value, ApiError>, base: &Artist) -> Result<ArtistPage, ApiError> {
+    let id = base.id.as_str();
+    let mut page = ArtistPage { artist: base.clone(), ..Default::default() };
+    let mut failures = 0;
+    match get(&format!("{API}/artists/{id}")).map(|v| parse_artist(&v)) {
+        Ok(Some(a)) => page.artist = a,
+        Ok(None) => {}
+        Err(ApiError::NotFound) => return Err(ApiError::NotFound),
+        Err(e) => {
+            failures += 1;
+            page.errors.push(("Artist details".into(), e.to_string()));
+        }
+    }
+    // albums and singles separately: `album_group` was removed from album objects
+    for (group, max, label) in [("album", ARTIST_ALBUMS_MAX, "Albums"), ("single", ARTIST_SINGLES_MAX, "Singles and EPs")] {
+        let mut list = Vec::new();
+        let url = format!("{API}/artists/{id}/albums?include_groups={group}&limit={ARTIST_ALBUMS_LIMIT}");
+        match paged_with(get, &url, max, |it| {
+            if let Some(a) = parse_album(it) {
+                list.push(a)
+            }
+        }) {
+            Ok(()) => {}
+            Err(e) => {
+                failures += 1;
+                page.errors.push((label.into(), e.to_string()));
+            }
+        }
+        if group == "album" {
+            page.albums = list;
+        } else {
+            page.singles = list;
+        }
+    }
+    // popular tracks: the artist's best search matches (only tracks credited to them)
+    let name = if page.artist.name.is_empty() { base.name.clone() } else { page.artist.name.clone() };
+    if !name.is_empty() {
+        let q = format!("artist:\"{}\"", name.replace('"', ""));
+        let lim = SEARCH_LIMIT.to_string();
+        let url = url::Url::parse_with_params(&format!("{API}/search"), &[("q", q.as_str()), ("type", "track"), ("limit", lim.as_str())]).map_err(|e| ApiError::Other(0, e.to_string()))?;
+        match get(url.as_str()) {
+            Ok(v) => {
+                page.top_tracks = v["tracks"]["items"].as_array().into_iter().flatten().filter_map(parse_track).filter(|t| t.artist_ids.iter().any(|a| a == id)).collect();
+            }
+            Err(e) => {
+                failures += 1;
+                page.errors.push(("Popular tracks".into(), e.to_string()));
+            }
+        }
+    }
+    if failures == 4 {
+        // every request failed: report the first reason instead of an empty page
+        let msg = page.errors.first().map(|e| e.1.clone()).unwrap_or_default();
+        return Err(ApiError::Other(0, msg));
+    }
+    Ok(page)
+}
+
 pub fn parse_album(v: &Value) -> Option<Album> {
     if v.is_null() || s(&v["id"]).is_empty() {
         return None;
@@ -630,5 +713,97 @@ mod tests {
             "playlists":{"items":[null,{"id":"p","name":"P","owner":{"id":"o"}}]}});
         let r = parse_search(&v);
         assert_eq!((r.tracks.len(), r.albums.len(), r.artists.len(), r.playlists.len()), (1, 1, 1, 1));
+    }
+}
+
+#[cfg(test)]
+mod artist_page_tests {
+    use super::*;
+    use std::cell::RefCell;
+
+    fn album(id: &str, kind: &str) -> Value {
+        json!({"id": id, "name": format!("{kind} {id}"), "album_type": kind, "artists": [{"id": "a1", "name": "Test Artist"}], "images": [{"url": format!("https://img/{id}"), "width": 300}], "release_date": "2024-01-01", "total_tracks": 10})
+    }
+
+    /// A stand-in for api.spotify.com that enforces the February 2026 limits.
+    fn fake<'a>(log: &'a RefCell<Vec<String>>, fail: &'static [&'static str]) -> impl Fn(&str) -> Result<Value, ApiError> + 'a {
+        move |u: &str| {
+            log.borrow_mut().push(u.to_string());
+            let url = url::Url::parse(u).unwrap();
+            let q: std::collections::HashMap<_, _> = url.query_pairs().into_owned().collect();
+            let limit: u32 = q.get("limit").and_then(|l| l.parse().ok()).unwrap_or(5);
+            if limit > 10 && (url.path().ends_with("/albums") || url.path().ends_with("/search")) {
+                return Err(ApiError::Other(400, "Invalid limit".into()));
+            }
+            for f in fail {
+                if u.contains(f) {
+                    return Err(ApiError::Forbidden("not available".into()));
+                }
+            }
+            let path = url.path();
+            if path == "/v1/artists/a1" {
+                return Ok(json!({"id": "a1", "name": "Test Artist", "images": [{"url": "https://img/artist", "width": 640}], "genres": ["indie"]}));
+            }
+            if path == "/v1/artists/missing" {
+                return Err(ApiError::NotFound);
+            }
+            if path == "/v1/artists/a1/albums" {
+                let group = q["include_groups"].as_str();
+                let offset: usize = q.get("offset").and_then(|o| o.parse().ok()).unwrap_or(0);
+                let total = if group == "album" { 23 } else { 4 };
+                let items: Vec<Value> = (offset..(offset + limit as usize).min(total)).map(|i| album(&format!("{group}{i}"), group)).collect();
+                let next = (offset + (limit as usize) < total).then(|| format!("{API}/artists/a1/albums?include_groups={group}&limit={limit}&offset={}", offset + limit as usize));
+                return Ok(json!({"items": items, "next": next}));
+            }
+            if path == "/v1/search" {
+                let t = |id: &str, artist: &str| json!({"id": id, "name": format!("Song {id}"), "duration_ms": 1000, "artists": [{"id": artist, "name": "x"}], "album": album("al", "album")});
+                return Ok(json!({"tracks": {"items": [t("t1", "a1"), t("t2", "other"), t("t3", "a1")]}}));
+            }
+            Err(ApiError::NotFound)
+        }
+    }
+
+    fn base() -> Artist {
+        Artist { provider: ProviderKind::Spotify, id: "a1".into(), name: "Test Artist".into(), ..Default::default() }
+    }
+
+    #[test]
+    fn loads_every_section_within_the_new_limits() {
+        let log = RefCell::new(vec![]);
+        let p = load_artist_page(&fake(&log, &[]), &base()).expect("loads");
+        assert_eq!(p.artist.artwork_url, "https://img/artist", "artist details (artwork) filled in");
+        assert_eq!(p.albums.len(), 23, "all album pages followed");
+        assert_eq!(p.singles.len(), 4);
+        assert!(p.albums.iter().all(|a| a.id.starts_with("album")) && p.singles.iter().all(|a| a.id.starts_with("single")));
+        assert_eq!(p.top_tracks.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(), ["t1", "t3"], "only tracks credited to the artist");
+        assert!(p.errors.is_empty(), "{:?}", p.errors);
+        assert!(log.borrow().iter().all(|u| !u.contains("limit=50")), "no request above the 10-item limit: {:?}", log.borrow());
+        assert!(log.borrow().iter().all(|u| !u.contains("top-tracks") && !u.contains("related-artists")), "removed/deprecated endpoints aren't called");
+    }
+
+    /// The pre-fix request (limit=50) is exactly what the fake rejects.
+    #[test]
+    fn old_request_is_rejected_by_the_limit() {
+        let log = RefCell::new(vec![]);
+        let get = fake(&log, &[]);
+        assert!(matches!(get(&format!("{API}/artists/a1/albums?include_groups=album,single&limit=50")), Err(ApiError::Other(400, _))));
+    }
+
+    #[test]
+    fn a_failing_section_does_not_block_the_page() {
+        let log = RefCell::new(vec![]);
+        let p = load_artist_page(&fake(&log, &["include_groups=single", "/search"]), &base()).expect("partial page");
+        assert_eq!(p.albums.len(), 23);
+        assert!(p.singles.is_empty() && p.top_tracks.is_empty());
+        let sections: Vec<&str> = p.errors.iter().map(|e| e.0.as_str()).collect();
+        assert_eq!(sections, ["Singles and EPs", "Popular tracks"]);
+    }
+
+    #[test]
+    fn total_failure_and_unknown_artist_are_errors() {
+        let log = RefCell::new(vec![]);
+        assert!(load_artist_page(&fake(&log, &["/v1/"]), &base()).is_err(), "nothing loaded › error (page shows Retry)");
+        let missing = Artist { id: "missing".into(), ..base() };
+        assert!(matches!(load_artist_page(&fake(&log, &[]), &missing), Err(ApiError::NotFound)));
     }
 }

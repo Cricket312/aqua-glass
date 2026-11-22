@@ -143,3 +143,20 @@ pub fn icontains(hay: &str, needle: &str) -> bool {
     }
     hay.to_lowercase().contains(&needle.to_lowercase())
 }
+
+/// Hand memory freed by the app back to the operating system where the allocator
+/// keeps it cached (used when entering Essential Mode). glibc keeps freed heap
+/// pages mapped until `malloc_trim`; the Windows heap decommits large free blocks
+/// by itself, so nothing is needed there.
+pub fn release_free_memory() {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    {
+        extern "C" {
+            fn malloc_trim(pad: usize) -> i32;
+        }
+        // SAFETY: malloc_trim only returns free heap memory to the kernel.
+        unsafe {
+            malloc_trim(0);
+        }
+    }
+}

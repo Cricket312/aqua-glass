@@ -218,13 +218,13 @@ fn search_results(app: &mut AquaApp, ui: &mut Ui) {
 
 fn category_keywords(c: Category) -> &'static [&'static str] {
     match c {
-        Category::Performance => &["ram", "memory", "cpu", "fps", "cache", "preset", "target", "budget"],
+        Category::Performance => &["ram", "memory", "cpu", "fps", "cache", "preset", "target", "budget", "essential", "idle", "gaming", "minimal"],
         Category::Backgrounds => &["background", "wallpaper", "blur", "image", "dim"],
         Category::Audio => &["eq", "equalizer", "device", "output", "bass", "balance", "buffer", "volume"],
         Category::Services => &["spotify", "account", "login", "sign in", "local", "folder", "premium"],
         Category::Library => &["sync", "import", "playlist", "liked", "conflict"],
         Category::Themes => &["theme", "color", "colour", "font", "editor"],
-        Category::Appearance => &["font", "scale", "sidebar", "layout"],
+        Category::Appearance => &["font", "scale", "sidebar", "layout", "portrait", "landscape", "essential", "vertical"],
         Category::Privacy => &["privacy", "telemetry", "cache", "log", "network", "disconnect"],
         Category::Shortcuts => &["keyboard", "hotkey", "macro", "shortcut", "media keys"],
         Category::Lyrics => &["lyrics", "karaoke", "offset"],
@@ -258,16 +258,7 @@ fn general(app: &mut AquaApp, ui: &mut Ui) {
     #[cfg(not(windows))]
     widgets::note(ui, "Tray, autostart, notifications and media controls are Windows features; they are inactive in this development build.");
     let mut d = false;
-    widgets::section(ui, "Layout");
-    ui.horizontal(|ui| {
-        for (m, l) in [(crate::config::LayoutMode::Auto, "Auto"), (crate::config::LayoutMode::Landscape, "Landscape"), (crate::config::LayoutMode::Portrait, "Portrait")] {
-            if ui.selectable_label(app.cfg.general.layout_mode == m, l).clicked() {
-                let ctx = ui.ctx().clone();
-                app.set_layout_mode(m, &ctx);
-            }
-        }
-    });
-    widgets::note(ui, "Auto switches to the single-column portrait layout when the window is narrower than 720 px (and back above 800 px). Portrait uses the same player and music services — nothing runs twice — and builds only what it shows: no sidebar, no visualizer, one tab at a time, and a queue that only loads the rows you can see.");
+    ui.label(RichText::new("Layout (Landscape / Portrait / Essential Mode) is in Settings › Appearance.").small().color(ui.visuals().weak_text_color()));
     widgets::section(ui, "Interface");
     slider_f(ui, "Interface scale (High-DPI is automatic; this is an extra zoom)", &mut app.cfg.general.ui_scale, 0.6..=2.5, &mut d);
     slider_f(ui, "Sidebar width", &mut app.cfg.general.sidebar_width, 150.0..=400.0, &mut d);
@@ -304,7 +295,29 @@ fn general(app: &mut AquaApp, ui: &mut Ui) {
     }
 }
 
+/// Settings › Appearance › Layout.
+fn layout_section(app: &mut AquaApp, ui: &mut Ui) {
+    widgets::section(ui, "Layout");
+    ui.horizontal_wrapped(|ui| {
+        for (m, l) in [(crate::config::LayoutMode::Auto, "Auto"), (crate::config::LayoutMode::Landscape, "Landscape"), (crate::config::LayoutMode::Portrait, "Portrait")] {
+            if ui.selectable_label(app.cfg.general.layout_mode == m, l).clicked() {
+                let ctx = ui.ctx().clone();
+                app.set_layout_mode(m, &ctx);
+            }
+        }
+        ui.separator();
+        let sc = app.cfg.shortcuts.get("toggle_essential").cloned().unwrap_or_default();
+        if ui.button("Essential Mode").on_hover_text(format!("Only the song title, playback controls and volume, with most resources released. {}", if sc.is_empty() { String::new() } else { format!("Shortcut: {sc}.") })).clicked() {
+            let ctx = ui.ctx().clone();
+            app.enter_essential(&ctx, true);
+        }
+    });
+    widgets::note(ui, "Auto picks portrait when the window is narrower than 720 px or clearly taller than wide (vertical monitors). Portrait and Essential Mode use the same player, queue, Similarity Radio and music services — nothing runs twice. Essential Mode options are in Settings › Performance.");
+}
+
 fn appearance(app: &mut AquaApp, ui: &mut Ui) {
+    layout_section(app, ui);
+    widgets::section(ui, "Theme and player bar");
     let mut d = false;
     ui.horizontal(|ui| {
         ui.label("Theme");
@@ -1333,6 +1346,49 @@ fn transfer(app: &mut AquaApp, ui: &mut Ui) {
     }
 }
 
+/// Settings › Performance › Essential Mode. Returns "dirty".
+fn essential_settings(app: &mut AquaApp, ui: &mut Ui) -> bool {
+    let mut d = false;
+    ui.add_space(8.0);
+    widgets::card(ui, Some("Essential Mode"), |ui| {
+    ui.label(RichText::new("A minimal window — song title, playback controls and volume — for gaming, working or long listening. Cover art, backgrounds, lyrics, visualizer and page data are released and the window only redraws when something changes. Playback, the queue, Similarity Radio, global hotkeys and media keys keep working.").color(ui.visuals().weak_text_color()));
+    ui.horizontal(|ui| {
+        if ui.button("Enter Essential Mode").clicked() {
+            let ctx = ui.ctx().clone();
+            app.enter_essential(&ctx, true);
+        }
+        let sc = app.cfg.shortcuts.get("toggle_essential").cloned().unwrap_or_default();
+        ui.label(RichText::new(if sc.is_empty() { "No shortcut set (Settings › Keyboard Shortcuts)".to_string() } else { format!("Shortcut: {sc} — works while Aqua Glass has focus; change it in Keyboard Shortcuts") }).small().color(ui.visuals().weak_text_color()));
+    });
+    let e = &mut app.cfg.essential;
+    ui.horizontal(|ui| {
+        d |= widgets::switch(ui, &mut e.auto_idle).changed();
+        ui.label("Enter automatically when I haven't used the Aqua Glass window for");
+        ui.add_enabled_ui(e.auto_idle, |ui| {
+            d |= ui.add(egui::DragValue::new(&mut e.idle_minutes).range(1..=240).suffix(" min")).changed();
+        });
+    });
+    ui.horizontal(|ui| {
+        d |= widgets::switch(ui, &mut e.auto_minimized).changed();
+        ui.label("Enter automatically when the window is minimized");
+    });
+    ui.horizontal(|ui| {
+        d |= widgets::switch(ui, &mut e.restore_layout).changed();
+        ui.label("Restore the previous window size, position and layout when leaving");
+    });
+    ui.horizontal(|ui| {
+        d |= widgets::switch(ui, &mut e.always_on_top).changed();
+        ui.label("Keep the Essential Mode window on top of other windows");
+    });
+    ui.horizontal(|ui| {
+        d |= widgets::switch(ui, &mut e.remember_size).changed();
+        ui.label(format!("Remember the Essential Mode window size (now {:.0}×{:.0})", e.size[0], e.size[1]));
+    });
+    ui.label(RichText::new("These options cost no memory themselves; Essential Mode lowers memory use (measured in docs/BENCHMARKS.md). Discord Rich Presence was removed in 0.7.4, so there's no option for it.").small().color(ui.visuals().weak_text_color()));
+    });
+    d
+}
+
 fn performance(app: &mut AquaApp, ui: &mut Ui) {
     let cur = app.monitor.current_mb();
     let peak = crate::perf::mb(app.monitor.peak_private_ws);
@@ -1451,7 +1507,9 @@ fn performance(app: &mut AquaApp, ui: &mut Ui) {
             row(ui, "Working set (incl. shared)", format!("{:.1} MB", crate::perf::mb(m.last.working_set)));
             row(ui, "Rendering FPS", format!("{:.0} (repaints only on change)", app.fps));
             row(ui, "Memory pressure", format!("{:?}", app.pressure));
-            row(ui, "Helper processes", "none (all in-process)".into());
+            row(ui, "Helper processes", if app.cfg.services.spotify_backend == crate::config::SpotifyBackend::Soloist && app.cfg.services.spotify_enabled { "Spotify Soloist (separate process, shown above)".into() } else { "none (all in-process)".into() });
+            row(ui, "CPU (Aqua Glass)", format!("{:.1} % of total CPU (all cores)", m.cpu_percent));
+            row(ui, "Essential Mode", if app.essential_active() { "on".into() } else { "off".into() });
             let est = features::combined_estimate(&|id| app.cfg.active(id));
             row(ui, "Estimated cost of enabled features", format!("+{:.0}–{:.0} MB (estimate, shared resources counted once)", est.0, est.1));
         });
@@ -1460,6 +1518,9 @@ fn performance(app: &mut AquaApp, ui: &mut Ui) {
         }
     });
     ui.add_space(8.0);
+    if essential_settings(app, ui) {
+        app.mark_dirty();
+    }
     widgets::section(ui, "RAM target");
     ui.horizontal_wrapped(|ui| {
         for t in [100, 150, 200, 250, 300] {

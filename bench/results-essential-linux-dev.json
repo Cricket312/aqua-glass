@@ -1,0 +1,394 @@
+{
+ "music": "40 FLACs with embedded 600x600 covers",
+ "settle_s": 20.0,
+ "sample_s": 10.0,
+ "runs": 3,
+ "results": [
+  {
+   "mode": "landscape",
+   "run": 0,
+   "private_ws_mb": 45.64,
+   "total_ws_mb": 131.39,
+   "private_bytes_mb": 169.61,
+   "threads": 19,
+   "cpu_pct_one_core": 9.49,
+   "audio_stream_active": true
+  },
+  {
+   "mode": "portrait",
+   "run": 0,
+   "private_ws_mb": 44.96,
+   "total_ws_mb": 128.22,
+   "private_bytes_mb": 169.06,
+   "threads": 19,
+   "cpu_pct_one_core": 4.55,
+   "audio_stream_active": true
+  },
+  {
+   "mode": "essential",
+   "run": 0,
+   "private_ws_mb": 42.81,
+   "total_ws_mb": 125.24,
+   "private_bytes_mb": 167.91,
+   "threads": 19,
+   "cpu_pct_one_core": 1.68,
+   "audio_stream_active": true
+  },
+  {
+   "mode": "landscape",
+   "run": 1,
+   "private_ws_mb": 45.61,
+   "total_ws_mb": 131.4,
+   "private_bytes_mb": 169.57,
+   "threads": 19,
+   "cpu_pct_one_core": 9.2,
+   "audio_stream_active": true
+  },
+  {
+   "mode": "portrait",
+   "run": 1,
+   "private_ws_mb": 45.02,
+   "total_ws_mb": 128.29,
+   "private_bytes_mb": 169.05,
+   "threads": 19,
+   "cpu_pct_one_core": 4.55,
+   "audio_stream_active": true
+  },
+  {
+   "mode": "essential",
+   "run": 1,
+   "private_ws_mb": 43.0,
+   "total_ws_mb": 125.27,
+   "private_bytes_mb": 169.3,
+   "threads": 19,
+   "cpu_pct_one_core": 1.58,
+   "audio_stream_active": true
+  },
+  {
+   "mode": "landscape",
+   "run": 2,
+   "private_ws_mb": 45.7,
+   "total_ws_mb": 131.13,
+   "private_bytes_mb": 169.75,
+   "threads": 19,
+   "cpu_pct_one_core": 9.2,
+   "audio_stream_active": true
+  },
+  {
+   "mode": "portrait",
+   "run": 2,
+   "private_ws_mb": 44.97,
+   "total_ws_mb": 128.01,
+   "private_bytes_mb": 168.94,
+   "threads": 19,
+   "cpu_pct_one_core": 4.35,
+   "audio_stream_active": true
+  },
+  {
+   "mode": "essential",
+   "run": 2,
+   "private_ws_mb": 42.87,
+   "total_ws_mb": 125.45,
+   "private_bytes_mb": 169.36,
+   "threads": 19,
+   "cpu_pct_one_core": 1.68,
+   "audio_stream_active": true
+  }
+ ],
+ "summary": {
+  "landscape": {
+   "private_ws_mb": {
+    "mean": 45.65,
+    "min": 45.61,
+    "max": 45.7
+   },
+   "total_ws_mb": {
+    "mean": 131.31,
+    "min": 131.13,
+    "max": 131.4
+   },
+   "private_bytes_mb": {
+    "mean": 169.64,
+    "min": 169.57,
+    "max": 169.75
+   },
+   "cpu_pct_one_core": {
+    "mean": 9.3,
+    "min": 9.2,
+    "max": 9.49
+   },
+   "threads": {
+    "mean": 19,
+    "min": 19,
+    "max": 19
+   },
+   "all_runs_playing": true
+  },
+  "portrait": {
+   "private_ws_mb": {
+    "mean": 44.98,
+    "min": 44.96,
+    "max": 45.02
+   },
+   "total_ws_mb": {
+    "mean": 128.17,
+    "min": 128.01,
+    "max": 128.29
+   },
+   "private_bytes_mb": {
+    "mean": 169.02,
+    "min": 168.94,
+    "max": 169.06
+   },
+   "cpu_pct_one_core": {
+    "mean": 4.48,
+    "min": 4.35,
+    "max": 4.55
+   },
+   "threads": {
+    "mean": 19,
+    "min": 19,
+    "max": 19
+   },
+   "all_runs_playing": true
+  },
+  "essential": {
+   "private_ws_mb": {
+    "mean": 42.89,
+    "min": 42.81,
+    "max": 43.0
+   },
+   "total_ws_mb": {
+    "mean": 125.32,
+    "min": 125.24,
+    "max": 125.45
+   },
+   "private_bytes_mb": {
+    "mean": 168.86,
+    "min": 167.91,
+    "max": 169.36
+   },
+   "cpu_pct_one_core": {
+    "mean": 1.65,
+    "min": 1.58,
+    "max": 1.68
+   },
+   "threads": {
+    "mean": 19,
+    "min": 19,
+    "max": 19
+   },
+   "all_runs_playing": true
+  }
+ },
+ "switching": {
+  "start_private_ws_mb": 45.57,
+  "cycles": [
+   {
+    "cycle": 1,
+    "essential_private_ws_mb": 42.88,
+    "landscape_private_ws_mb": 45.16,
+    "private_bytes_mb": 169.62,
+    "audio_stream_active": true
+   },
+   {
+    "cycle": 2,
+    "essential_private_ws_mb": 42.9,
+    "landscape_private_ws_mb": 45.17,
+    "private_bytes_mb": 169.62,
+    "audio_stream_active": true
+   },
+   {
+    "cycle": 3,
+    "essential_private_ws_mb": 42.9,
+    "landscape_private_ws_mb": 45.17,
+    "private_bytes_mb": 169.62,
+    "audio_stream_active": true
+   },
+   {
+    "cycle": 4,
+    "essential_private_ws_mb": 42.9,
+    "landscape_private_ws_mb": 45.18,
+    "private_bytes_mb": 169.62,
+    "audio_stream_active": true
+   },
+   {
+    "cycle": 5,
+    "essential_private_ws_mb": 42.91,
+    "landscape_private_ws_mb": 45.18,
+    "private_bytes_mb": 169.62,
+    "audio_stream_active": true
+   },
+   {
+    "cycle": 6,
+    "essential_private_ws_mb": 42.9,
+    "landscape_private_ws_mb": 45.1,
+    "private_bytes_mb": 169.62,
+    "audio_stream_active": true
+   },
+   {
+    "cycle": 7,
+    "essential_private_ws_mb": 42.9,
+    "landscape_private_ws_mb": 45.17,
+    "private_bytes_mb": 169.62,
+    "audio_stream_active": true
+   },
+   {
+    "cycle": 8,
+    "essential_private_ws_mb": 42.91,
+    "landscape_private_ws_mb": 45.17,
+    "private_bytes_mb": 169.62,
+    "audio_stream_active": true
+   },
+   {
+    "cycle": 9,
+    "essential_private_ws_mb": 42.9,
+    "landscape_private_ws_mb": 45.17,
+    "private_bytes_mb": 169.62,
+    "audio_stream_active": true
+   },
+   {
+    "cycle": 10,
+    "essential_private_ws_mb": 42.9,
+    "landscape_private_ws_mb": 45.17,
+    "private_bytes_mb": 169.62,
+    "audio_stream_active": true
+   },
+   {
+    "cycle": 11,
+    "essential_private_ws_mb": 42.9,
+    "landscape_private_ws_mb": 45.17,
+    "private_bytes_mb": 169.62,
+    "audio_stream_active": true
+   },
+   {
+    "cycle": 12,
+    "essential_private_ws_mb": 42.9,
+    "landscape_private_ws_mb": 45.17,
+    "private_bytes_mb": 169.62,
+    "audio_stream_active": true
+   },
+   {
+    "cycle": 13,
+    "essential_private_ws_mb": 42.91,
+    "landscape_private_ws_mb": 45.12,
+    "private_bytes_mb": 169.62,
+    "audio_stream_active": true
+   },
+   {
+    "cycle": 14,
+    "essential_private_ws_mb": 42.91,
+    "landscape_private_ws_mb": 45.22,
+    "private_bytes_mb": 169.62,
+    "audio_stream_active": true
+   },
+   {
+    "cycle": 15,
+    "essential_private_ws_mb": 42.92,
+    "landscape_private_ws_mb": 45.13,
+    "private_bytes_mb": 169.62,
+    "audio_stream_active": true
+   },
+   {
+    "cycle": 16,
+    "essential_private_ws_mb": 42.91,
+    "landscape_private_ws_mb": 45.11,
+    "private_bytes_mb": 169.62,
+    "audio_stream_active": true
+   },
+   {
+    "cycle": 17,
+    "essential_private_ws_mb": 42.92,
+    "landscape_private_ws_mb": 45.18,
+    "private_bytes_mb": 169.62,
+    "audio_stream_active": true
+   },
+   {
+    "cycle": 18,
+    "essential_private_ws_mb": 42.91,
+    "landscape_private_ws_mb": 45.18,
+    "private_bytes_mb": 169.62,
+    "audio_stream_active": true
+   },
+   {
+    "cycle": 19,
+    "essential_private_ws_mb": 42.91,
+    "landscape_private_ws_mb": 45.18,
+    "private_bytes_mb": 169.62,
+    "audio_stream_active": true
+   },
+   {
+    "cycle": 20,
+    "essential_private_ws_mb": 42.92,
+    "landscape_private_ws_mb": 45.18,
+    "private_bytes_mb": 169.62,
+    "audio_stream_active": true
+   }
+  ]
+ },
+ "browse": [
+  {
+   "run": 0,
+   "albums_page": {
+    "private_ws_mb": 50.41,
+    "total_ws_mb": 136.29,
+    "private_bytes_mb": 176.66,
+    "audio_stream_active": true
+   },
+   "essential": {
+    "private_ws_mb": 45.87,
+    "total_ws_mb": 128.28,
+    "private_bytes_mb": 175.29,
+    "audio_stream_active": true
+   },
+   "back_on_albums": {
+    "private_ws_mb": 51.57,
+    "total_ws_mb": 137.45,
+    "private_bytes_mb": 178.84,
+    "audio_stream_active": true
+   }
+  },
+  {
+   "run": 1,
+   "albums_page": {
+    "private_ws_mb": 49.96,
+    "total_ws_mb": 135.91,
+    "private_bytes_mb": 173.99,
+    "audio_stream_active": true
+   },
+   "essential": {
+    "private_ws_mb": 45.96,
+    "total_ws_mb": 128.45,
+    "private_bytes_mb": 174.13,
+    "audio_stream_active": true
+   },
+   "back_on_albums": {
+    "private_ws_mb": 51.64,
+    "total_ws_mb": 137.6,
+    "private_bytes_mb": 176.77,
+    "audio_stream_active": true
+   }
+  },
+  {
+   "run": 2,
+   "albums_page": {
+    "private_ws_mb": 50.35,
+    "total_ws_mb": 136.57,
+    "private_bytes_mb": 176.52,
+    "audio_stream_active": true
+   },
+   "essential": {
+    "private_ws_mb": 45.96,
+    "total_ws_mb": 128.72,
+    "private_bytes_mb": 175.91,
+    "audio_stream_active": true
+   },
+   "back_on_albums": {
+    "private_ws_mb": 51.64,
+    "total_ws_mb": 137.87,
+    "private_bytes_mb": 178.73,
+    "audio_stream_active": true
+   }
+  }
+ ]
+}

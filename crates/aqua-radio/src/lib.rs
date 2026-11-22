@@ -600,9 +600,11 @@ fn worker(rx: mpsc::Receiver<Msg>, tx: mpsc::Sender<Msg>, status: Arc<Mutex<Stat
                         s.error = None;
                         s.message = None;
                         w.upcoming += t.len();
+                        log::info!("similarity radio: added {} recommendations ({} upcoming, {} generated in total)", t.len(), w.upcoming, s.generated);
                         w.deps.engine.append_radio(t);
                     }
                     Ok(_) => {
+                        log::info!("similarity radio: no new recommendations from {} ({} upcoming)", s.source, w.upcoming);
                         if s.generated > 0 {
                             s.message = Some("No more similar songs available right now — trying again after the next song.".into());
                         } else {
@@ -611,6 +613,7 @@ fn worker(rx: mpsc::Receiver<Msg>, tx: mpsc::Sender<Msg>, status: Arc<Mutex<Stat
                         w.stalled = true;
                     }
                     Err(e) => {
+                        log::info!("similarity radio: fetch failed: {e}");
                         s.error = Some(e);
                         w.last_fail = Some(Instant::now());
                     }

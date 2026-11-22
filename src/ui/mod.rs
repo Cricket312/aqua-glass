@@ -2,6 +2,7 @@
 
 mod background;
 mod browse;
+mod essential;
 mod jobs;
 mod pages;
 mod portrait;
@@ -97,8 +98,18 @@ pub struct ViewState {
     pub live: HashMap<String, Result<Vec<Track>, String>>,
     pub loading: std::collections::HashSet<String>,
     pub filter: String,
-    pub artist_albums: HashMap<String, Result<Vec<Album>, String>>,
+    /// Spotify artist pages by artist id (bounded, see `ARTIST_CACHE`).
+    pub artist_pages: HashMap<String, Result<crate::services::spotify::ArtistPage, String>>,
+    /// Last.fm similar artists / biography by artist name.
+    pub artist_extra: HashMap<String, jobs::ArtistExtra>,
+    /// Why looking an artist up by name failed (shown with a Retry button).
+    pub artist_lookup_err: HashMap<String, String>,
+    /// Local artist pages: (tracks, albums) by lower-case name; cleared on rescan.
+    pub local_artists: HashMap<String, (Vec<Track>, Vec<Album>)>,
 }
+
+/// Artist pages kept in memory (each is a few dozen albums/tracks of metadata).
+pub const ARTIST_CACHE: usize = 12;
 
 #[derive(Default)]
 pub struct LyricsState {
@@ -136,6 +147,10 @@ pub struct AquaApp {
     pub soloist_sig: Option<u64>,
     /// Portrait layout is active this frame (see `portrait::wants_portrait`).
     pub portrait: bool,
+    /// Essential Mode is on (with what to restore when it's turned off).
+    pub essential: Option<essential::Saved>,
+    /// Last keyboard/mouse input in the main window (Essential Mode's idle timer).
+    pub last_input: Instant,
     pub filter: Filter,
     pub engine: Engine,
     pub out: Output,
@@ -268,6 +283,8 @@ impl AquaApp {
             featured_idx: 0,
             soloist_sig: None,
             portrait: false,
+            essential: None,
+            last_input: Instant::now(),
             filter: Filter::All,
             engine,
             out,
@@ -438,6 +455,32 @@ impl AquaApp {
         }
     }
 
+    /// Apply a volume change from any layout (landscape, portrait, mini-player,
+    /// Essential). The engine forwards it to the active backend (cpal output or
+    /// Spotify Soloist); every layout reads the level back from the engine state, so
+    /// they always agree. Moving the volume while muted unmutes.
+    pub fn apply_volume(&mut self, ch: widgets::VolumeChange) {
+        match ch {
+            widgets::VolumeChange::Set(v) => {
+                let v = v.clamp(0.0, 1.0);
+                self.engine.send(Cmd::SetVolume(v));
+                if self.state.muted && v > 0.0 {
+                    self.engine.send(Cmd::ToggleMute);
+                    self.state.muted = false;
+                    self.cfg.playback.muted = false;
+                }
+                self.state.volume = v; // immediate feedback until the engine publishes
+                self.cfg.playback.volume = v;
+            }
+            widgets::VolumeChange::ToggleMute => {
+                self.engine.send(Cmd::ToggleMute);
+                self.state.muted = !self.state.muted;
+                self.cfg.playback.muted = self.state.muted;
+            }
+        }
+        self.mark_dirty();
+    }
+
     pub fn is_liked(&self, t: &Track) -> bool {
         self.liked_keys.contains(&t.key())
     }
@@ -590,13 +633,16 @@ impl AquaApp {
     }
 
     /// Open the page of the `i`-th artist of a track. Spotify: the artist page (looked
-    /// up by name when the track has no artist ids); local files: a library search.
+    /// up by name when the track has no artist ids); local files: the local artist page.
     pub fn open_artist_of(&mut self, t: &Track, i: usize) {
         let Some(name) = t.artists.get(i).cloned() else { return };
         match t.provider {
             ProviderKind::Spotify => {
                 let id = t.artist_ids.get(i).cloned().unwrap_or_default();
                 self.navigate(Page::Artist(crate::model::Artist { provider: ProviderKind::Spotify, id, name, ..Default::default() }));
+            }
+            ProviderKind::Local => {
+                self.navigate(Page::Artist(crate::model::Artist { provider: ProviderKind::Local, id: String::new(), name, ..Default::default() }));
             }
             _ => {
                 self.search.query = name;
@@ -962,6 +1008,7 @@ impl AquaApp {
                     .shortcuts
                     .iter()
                     .filter_map(|(a, s)| Some((Action::from_id(a)?, Binding::parse(s).ok()?)))
+                    .filter(|(a, _)| a.global())
                     .collect();
                 let ctx2 = ctx.clone();
                 match winint::create_hotkeys(&binds, self.engine.clone(), self.ui_tx.clone(), Arc::new(move || ctx2.request_repaint()), c.playback.volume_step, c.playback.seek_step_s as i64 * 1000) {
@@ -1084,22 +1131,38 @@ impl AquaApp {
                     self.view.live.insert(key, res);
                 }
                 Msg::ArtistFound { name, res } => {
-                    // the lookup key stays in `loading` on failure so the page doesn't retry every frame
-                    if matches!(res, Ok(Some(_))) {
-                        self.view.loading.remove(&format!("artist-lookup:{name}"));
-                    }
+                    self.view.loading.remove(&format!("artist-lookup:{name}"));
                     let showing = matches!(&self.page, Page::Artist(a) if a.id.is_empty() && a.name == name);
                     match res {
                         // replace the placeholder page in place (no extra history entry)
                         Ok(Some(a)) if showing => self.page = Page::Artist(a),
-                        Ok(None) if showing => self.toast(format!("Spotify has no artist named “{name}”."), true),
-                        Err(e) if showing => self.toast(format!("Could not open the artist: {e}"), true),
+                        // shown on the page with a Retry button (no automatic retry loop)
+                        Ok(None) => {
+                            self.view.artist_lookup_err.insert(name.clone(), format!("Spotify has no artist named “{name}”."));
+                        }
+                        Err(e) => {
+                            self.view.artist_lookup_err.insert(name, format!("Couldn't look the artist up: {e}"));
+                        }
                         _ => {}
                     }
                 }
-                Msg::ArtistAlbums { artist, res } => {
-                    self.view.loading.remove(&format!("artist:{}", artist.id));
-                    self.view.artist_albums.insert(artist.id, res);
+                Msg::ArtistPage { id, res } => {
+                    self.view.loading.remove(&format!("artist:{id}"));
+                    if self.view.artist_pages.len() >= ARTIST_CACHE {
+                        let keep = match &self.page {
+                            Page::Artist(a) => a.id.clone(),
+                            _ => String::new(),
+                        };
+                        self.view.artist_pages.retain(|k, _| *k == keep);
+                    }
+                    self.view.artist_pages.insert(id, res);
+                }
+                Msg::ArtistExtra { name, extra } => {
+                    self.view.loading.remove(&format!("artist-extra:{name}"));
+                    if self.view.artist_extra.len() >= ARTIST_CACHE {
+                        self.view.artist_extra.clear();
+                    }
+                    self.view.artist_extra.insert(name, extra);
                 }
                 Msg::SyncDone { provider, res } => match res {
                     Ok(r) => {
@@ -1133,6 +1196,7 @@ impl AquaApp {
                 }
                 Msg::LocalScanned(tracks) => {
                     self.local_scanning = false;
+                    self.view.local_artists.clear();
                     let n = tracks.len();
                     let mut s = self.library.lock().unwrap();
                     let l = s.lib(ProviderKind::Local);
@@ -1235,6 +1299,7 @@ impl AquaApp {
                     self.toast("Mini-player is disabled (Settings › Mini-Player).", true);
                 }
             }
+            Action::ToggleEssential => self.toggle_essential(ctx),
             Action::OpenSearch => {
                 self.navigate(Page::Search);
                 self.search.focus = true;
@@ -1268,7 +1333,7 @@ impl AquaApp {
         for (aid, s) in &self.cfg.shortcuts {
             let (Some(a), Ok(b)) = (Action::from_id(aid), Binding::parse(s)) else { continue };
             // when registered globally, Windows delivers them through the hotkey handler instead
-            if self.ints.hotkeys.is_some() && (b.ctrl || b.alt || b.win) {
+            if self.ints.hotkeys.is_some() && a.global() && (b.ctrl || b.alt || b.win) {
                 continue;
             }
             let Some(k) = b.egui_key() else { continue };
@@ -1542,8 +1607,11 @@ impl eframe::App for AquaApp {
         }
         self.apply_config(ctx);
         self.perf_tick();
-        self.lyrics_tick();
-        self.auto_sync_tick();
+        if !self.essential_active() {
+            // suspended in Essential Mode: no lyrics requests, no library auto-sync
+            self.lyrics_tick();
+            self.auto_sync_tick();
+        }
         self.save_if_dirty(false);
         // window close / minimize to tray
         let (close, minimized) = ctx.input(|i| (i.viewport().close_requested(), i.viewport().minimized.unwrap_or(false)));
@@ -1556,6 +1624,7 @@ impl eframe::App for AquaApp {
             self.save_if_dirty(true);
             self.engine.send(Cmd::Shutdown);
         }
+        self.essential_auto(ctx, minimized);
         if minimized && self.cfg.active("minimize_to_tray") && self.ints.tray.is_some() {
             ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
@@ -1585,6 +1654,35 @@ impl eframe::App for AquaApp {
                     ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
                 }
             }
+        }
+        if ctx.input(|i| !i.events.is_empty()) {
+            self.last_input = now;
+        }
+        if self.essential_active() {
+            // Essential Mode: remember its own size (never the normal window size)
+            if self.cfg.essential.remember_size && !self.essential.as_ref().is_some_and(|e| e.resize_pending) {
+                if let Some(r) = ctx.input(|i| i.viewport().inner_rect) {
+                    let sz = [r.width().round(), r.height().round()];
+                    if sz[0] >= 200.0 && sz != self.cfg.essential.size {
+                        self.cfg.essential.size = sz;
+                        self.mark_dirty();
+                    }
+                }
+            }
+            self.in_app_shortcuts(&ctx);
+            if self.essential_active() {
+                essential::show(self, ui);
+                self.essential_housekeeping(&ctx);
+            }
+            self.dialogs(&ctx);
+            self.paint_toasts(&ctx);
+            // event-driven: the engine wakes the UI on every state change; only a
+            // slow heartbeat for housekeeping (memory monitor, settings save)
+            ctx.request_repaint_after(Duration::from_secs(5));
+            if !self.toasts.is_empty() {
+                ctx.request_repaint_after(Duration::from_millis(250));
+            }
+            return;
         }
         // remember window geometry
         if let Some(r) = ctx.input(|i| i.viewport().outer_rect) {

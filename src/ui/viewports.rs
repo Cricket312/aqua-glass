@@ -67,6 +67,7 @@ fn mini_player(app: &mut AquaApp, ctx: &egui::Context) {
     let tex = st.current.as_ref().and_then(|t| app.artwork.lock().unwrap().get(&t.artwork_url, Kind::Cover));
     let accent = app.accent();
     let mut close = false;
+    let mut vol_change = None;
     let mut cmds = Vec::new();
     let mut geom = None;
     ctx.show_viewport_immediate(egui::ViewportId::from_hash_of("aqua-mini"), b, |ui, _class| {
@@ -84,7 +85,7 @@ fn mini_player(app: &mut AquaApp, ctx: &egui::Context) {
                 MiniLayout::Compact => 0.0,
                 MiniLayout::Horizontal => (ui.available_height() - 4.0).clamp(40.0, 96.0),
             };
-            let body = |ui: &mut egui::Ui, cmds: &mut Vec<Cmd>, close: &mut bool| {
+            let body = |ui: &mut egui::Ui, cmds: &mut Vec<Cmd>, close: &mut bool, vol: &mut Option<widgets::VolumeChange>| {
                 ui.horizontal(|ui| {
                     if let Some(t) = &st.current {
                         ui.add(egui::Label::new(RichText::new(&t.title).strong()).truncate());
@@ -119,6 +120,12 @@ fn mini_player(app: &mut AquaApp, ctx: &egui::Context) {
                         ui.label(RichText::new(format!("{} / {}", fmt_ms(pos), fmt_ms(st.duration_ms))).small().monospace());
                     }
                 });
+                if !compact {
+                    let sw = (ui.available_width() - 40.0).clamp(60.0, 220.0);
+                    if let Some(ch) = widgets::volume_control(ui, st.volume, st.muted, sw) {
+                        *vol = Some(ch);
+                    }
+                }
                 if st.duration_ms > 0 {
                     let (r, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 4.0), egui::Sense::click());
                     ui.painter().rect_filled(r, 2, ui.visuals().faint_bg_color);
@@ -136,14 +143,14 @@ fn mini_player(app: &mut AquaApp, ctx: &egui::Context) {
                 MiniLayout::Square => {
                     ui.vertical_centered(|ui| {
                         widgets::artwork(ui, tex.as_ref(), art, 8);
-                        body(ui, &mut cmds, &mut close);
+                        body(ui, &mut cmds, &mut close, &mut vol_change);
                     });
                 }
-                MiniLayout::Compact => body(ui, &mut cmds, &mut close),
+                MiniLayout::Compact => body(ui, &mut cmds, &mut close, &mut vol_change),
                 MiniLayout::Horizontal => {
                     ui.horizontal(|ui| {
                         widgets::artwork(ui, tex.as_ref(), art, 8);
-                        ui.vertical(|ui| body(ui, &mut cmds, &mut close));
+                        ui.vertical(|ui| body(ui, &mut cmds, &mut close, &mut vol_change));
                     });
                 }
             }
@@ -159,6 +166,9 @@ fn mini_player(app: &mut AquaApp, ctx: &egui::Context) {
     });
     for c in cmds {
         app.engine.send(c);
+    }
+    if let Some(ch) = vol_change {
+        app.apply_volume(ch);
     }
     if let Some((p, s)) = geom {
         if app.cfg.mini.pos != Some(p) || app.cfg.mini.size != s {

@@ -1,5 +1,93 @@
 # Changelog
 
+## 0.10.0 — 2026-11-22 (portrait volume, artist pages fixed, Essential Mode)
+
+### Fixed
+- **Artist pages didn't load for Spotify artists.** Since Spotify's February 2026 Web API
+  changes, *Get Artist's Albums* accepts at most `limit=10`; Aqua Glass asked for 50, so
+  the request was rejected and the page stayed empty or showed an error.
+  - Albums and Singles & EPs are now fetched separately (`album_group` was removed from
+    album objects) in pages of 10.
+  - Also corrected to the documented limits: playlist items (50, was 100) and track search
+    (≤ 10).
+- **Artist pages also load:**
+  - artist details (artwork, genres);
+  - "Popular on Spotify": the artist's best search matches, because Spotify removed *Top
+    Tracks*;
+  - with a Last.fm key, similar artists and a biography.
+
+  Related artists, followers and popularity are not shown: Spotify removed or deprecated
+  them.
+  - Every section loads independently; a failure shows a note and the rest stays.
+  - **Retry** reloads the page.
+  - Looking an artist up by name now shows an error with Retry instead of spinning
+    forever.
+  - Pages are cached (at most 12) so revisiting doesn't re-request.
+- **Artist names are links everywhere:** Now Playing (landscape), track rows (search,
+  playlists, albums, artist pages), the queue, the side panel and album headers. Local
+  artists get their own page (songs, albums, Play / Shuffle) instead of a search.
+
+### Added
+- **Volume control in portrait mode**, under the transport, sized to the column. It's the
+  same control as the player bar, the mini-player (which had none) and Essential Mode:
+  - vector speaker icon whose waves follow the level, click to mute;
+  - wheel over it to change the volume (5 % per notch on Windows; X11 sends two steps per
+    click);
+  - percentage shown while hovering or dragging;
+  - moving the volume while muted unmutes.
+
+  All layouts read the level from the engine, so they always agree; it reaches the active
+  backend (Soloist included).
+- **Essential Mode**: a small resizable window with only the song title, shuffle,
+  previous, play/pause, next, repeat and volume.
+  - Enter or leave it with `Ctrl+Shift+M` (in-app only — not registered globally, because
+    other apps such as Discord use it), Settings › Appearance › Layout, the "…" menu or
+    the tray.
+  - Entering it releases resources:
+    - cover and background textures and decoded images;
+    - page data, other lyrics and in-memory playlist track lists;
+    - the visualizer feed.
+
+    Freed memory is handed back to the OS once the renderer has destroyed the textures.
+  - Suspended while it's on: lyrics requests, library auto-sync, animated background,
+    animations, mini-player/overlay windows. It redraws only on changes.
+  - Playback, queue, Similarity Radio, hotkeys, media keys and history continue.
+  - Leaving restores window size/position/maximized, page, theme and animations. No
+    setting is changed.
+  - Options in Settings › Performance › Essential Mode:
+    - auto-enter after N idle minutes, or when minimized (both off);
+    - restore layout on exit;
+    - always on top;
+    - remember size.
+
+    Discord Rich Presence was removed in 0.7.4, so there's no option for it.
+- `bench/essential_bench.py`: landscape vs portrait vs Essential under identical playback,
+  a browse-then-Essential scenario and a 20-cycle switching test. Results in
+  docs/BENCHMARKS.md:
+  - Essential **42.9 MB** private working set vs 45.7 MB landscape;
+  - **1.65 %** vs 9.3 % of one core;
+  - −4.3 MB after browsing covers;
+  - no growth over 20 switches.
+- Similarity Radio logs each refill / empty result (diagnostic log).
+
+### Changed (polish)
+- Settings › Appearance now holds the Layout section (Auto / Landscape / Portrait /
+  Essential Mode), followed by its own "Theme and player bar" section; General points there.
+- One header style for albums and playlists:
+  - larger artwork and title, with a small "Album"/"Playlist" label;
+  - album artists are links inside the header.
+- One Play / Shuffle pill pair on playlist, album and artist pages. Albums now show a
+  loading line, and an error with Retry.
+- Provider tags are fixed-size pills (they stretched to the row height in track lists).
+- In landscape, pages no longer add their own "‹ Back" button next to the top bar's
+  back/forward arrows; portrait keeps it, since it has no arrows.
+- Detailed Diagnostics:
+  - shows CPU (share of all cores) and Essential Mode status;
+  - lists Spotify Soloist as a helper process when it's the backend.
+- The default theme already uses the requested palette (`#0B1517` background … `#62D6B2`
+  accent); themes, accents, fonts, rounding, spacing and every other customization are
+  unchanged.
+
 ## 0.9.2 — 2026-11-17 (portrait mode on vertical monitors)
 
 ### Changed

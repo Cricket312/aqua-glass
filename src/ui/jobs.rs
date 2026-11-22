@@ -17,7 +17,10 @@ pub enum Msg {
     Search { gen: u64, provider: ProviderKind, res: Result<SearchResults, String> },
     PlaylistTracks { provider: ProviderKind, id: String, res: Result<Vec<Track>, String> },
     AlbumTracks { album: Album, res: Result<Vec<Track>, String> },
-    ArtistAlbums { artist: Artist, res: Result<Vec<Album>, String> },
+    /// Everything Spotify provides for an artist page (sections can fail separately).
+    ArtistPage { id: String, res: Result<spotify::ArtistPage, String> },
+    /// Similar artists + biography from Last.fm (when a Last.fm key is set).
+    ArtistExtra { name: String, extra: ArtistExtra },
     /// Artist looked up by name (artist link on a track without artist ids).
     ArtistFound { name: String, res: Result<Option<Artist>, String> },
     SyncDone { provider: ProviderKind, res: Result<SyncReport, String> },
@@ -27,6 +30,14 @@ pub enum Msg {
     TransferDone(Result<TransferLog, String>),
     Alternatives { src: Track, res: Result<Vec<crate::matching::Candidate>, String> },
     Toast(String, bool),
+}
+
+/// Last.fm extras for an artist page.
+#[derive(Clone, Debug, Default)]
+pub struct ArtistExtra {
+    pub similar: Vec<String>,
+    pub bio: Option<String>,
+    pub error: Option<String>,
 }
 
 #[derive(Clone)]

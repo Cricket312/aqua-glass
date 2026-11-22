@@ -223,6 +223,12 @@ fn app_menu(app: &mut AquaApp, ui: &mut Ui) {
                 ui.close();
             }
         }
+        let sc = app.cfg.shortcuts.get("toggle_essential").cloned().unwrap_or_default();
+        if ui.button(if sc.is_empty() { "Essential Mode".to_string() } else { format!("Essential Mode   {sc}") }).clicked() {
+            let ctx = ui.ctx().clone();
+            app.enter_essential(&ctx, true);
+            ui.close();
+        }
         ui.separator();
         if ui.button("Disable all visual customizations").clicked() {
             app.cfg.disable_all_visual();
@@ -514,17 +520,8 @@ fn player_bar(app: &mut AquaApp, ui: &mut Ui) {
             if app.cfg.active("mini_player") && icon_btn(ui, icon::MINI(), 14.0, v.text_color(), "Mini-player") {
                 app.do_action(crate::shortcuts::Action::ToggleMiniPlayer, &ui.ctx().clone());
             }
-            let mut vol = st.volume;
-            ui.spacing_mut().slider_width = 100.0;
-            if ui.add(egui::Slider::new(&mut vol, 0.0..=1.0).show_value(false).trailing_fill(true)).changed() {
-                app.engine.send(Cmd::SetVolume(vol));
-                app.cfg.playback.volume = vol;
-                app.mark_dirty();
-            }
-            if icon_btn(ui, if st.muted { icon::MUTE() } else { icon::VOL() }, 15.0, v.text_color(), "Mute") {
-                app.engine.send(Cmd::ToggleMute);
-                app.cfg.playback.muted = !st.muted;
-                app.mark_dirty();
+            if let Some(ch) = widgets::volume_control(ui, st.volume, st.muted, 100.0) {
+                app.apply_volume(ch);
             }
             device_menu(app, ui);
             let rp = app.cfg.general.right_panel;
@@ -716,7 +713,8 @@ fn queue_tab(app: &mut AquaApp, ui: &mut Ui) {
             ui.vertical(|ui| {
                 ui.set_max_width(ui.available_width() - 34.0);
                 ui.add(egui::Label::new(RichText::new(&t.title).size(14.5).strong()).truncate());
-                ui.add(egui::Label::new(RichText::new(t.artist_line()).size(12.5).color(ui.visuals().weak_text_color())).truncate());
+                let weak = ui.visuals().weak_text_color();
+                super::pages::artist_links(app, ui, t, 12.5, weak);
             });
             if t.provider != ProviderKind::Local {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -816,7 +814,7 @@ pub(super) fn queue_row(app: &mut AquaApp, ui: &mut Ui, t: &crate::model::Track,
             if t.provider != ProviderKind::Local {
                 widgets::provider_badge(ui, t.provider);
             }
-            ui.add(egui::Label::new(RichText::new(t.artist_line()).size(12.0).color(v.weak_text_color())).truncate());
+            super::pages::artist_links(app, ui, t, 12.0, v.weak_text_color());
         });
     });
     child.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

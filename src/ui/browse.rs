@@ -547,7 +547,8 @@ pub fn now_playing(app: &mut AquaApp, ui: &mut Ui) {
     let accent = app.accent();
     let body = |app: &mut AquaApp, ui: &mut Ui| {
         ui.label(RichText::new(&t.title).size(28.0).strong());
-        ui.label(RichText::new(t.artist_line()).size(17.0));
+        let col = ui.visuals().text_color();
+        super::pages::artist_links(app, ui, &t, 17.0, col);
         if !t.album.is_empty() {
             ui.label(RichText::new(&t.album).color(ui.visuals().weak_text_color()));
         }

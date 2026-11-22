@@ -77,9 +77,10 @@ mod imp {
         let prev = MenuItem::with_id("prev", "Previous", true, None);
         let show = MenuItem::with_id("show", "Show Aqua Glass", true, None);
         let mini = MenuItem::with_id("mini", "Mini-Player", true, None);
+        let essential = MenuItem::with_id("essential", "Essential Mode", true, None);
         let settings = MenuItem::with_id("settings", "Settings…", true, None);
         let quit = MenuItem::with_id("quit", "Quit", true, None);
-        menu.append_items(&[&play, &next, &prev, &PredefinedMenuItem::separator(), &show, &mini, &settings, &PredefinedMenuItem::separator(), &quit])?;
+        menu.append_items(&[&play, &next, &prev, &PredefinedMenuItem::separator(), &show, &essential, &mini, &settings, &PredefinedMenuItem::separator(), &quit])?;
         let icon = tray_icon::Icon::from_rgba(icon_rgba(32), 32, 32)?;
         let tray = tray_icon::TrayIconBuilder::new().with_menu(Box::new(menu)).with_tooltip("Aqua Glass").with_icon(icon).with_menu_on_left_click(false).build()?;
         let (ui2, wake2) = (ui.clone(), wake.clone());
@@ -93,6 +94,10 @@ mod imp {
                 }
                 "mini" => {
                     let _ = ui.send(UiCmd::ToggleMini);
+                }
+                "essential" => {
+                    let _ = ui.send(UiCmd::Show);
+                    let _ = ui.send(UiCmd::Action(Action::ToggleEssential));
                 }
                 "settings" => {
                     let _ = ui.send(UiCmd::OpenSettings);
