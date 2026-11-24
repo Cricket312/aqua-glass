@@ -813,6 +813,7 @@ fn spotify_artist(app: &mut AquaApp, ui: &mut Ui, a: &Artist) {
         Some(Ok(p)) => {
             egui::ScrollArea::vertical().id_salt("artist").auto_shrink([false, false]).show(ui, |ui| {
                 artist_header(app, ui, &p.artist.artwork_url, &p.artist.name, &p.artist.genres.iter().take(3).cloned().collect::<Vec<_>>().join(", "), p.artist.provider, &p.top_tracks);
+                artist_stats_line(app, ui, &name);
                 let show = ArtistShow { tracks: &p.top_tracks, tracks_label: "Popular on Spotify", albums: &p.albums, singles: &p.singles, errors: &p.errors };
                 artist_sections(app, ui, &show);
                 if p.top_tracks.is_empty() && p.albums.is_empty() && p.singles.is_empty() && p.errors.is_empty() {
@@ -845,6 +846,7 @@ fn local_artist(app: &mut AquaApp, ui: &mut Ui, a: &Artist) {
     egui::ScrollArea::vertical().id_salt("artist").auto_shrink([false, false]).show(ui, |ui| {
         let sub = format!("{} songs · {} albums in your local files", tracks.len(), albums.len());
         artist_header(app, ui, &art, &a.name, &sub, ProviderKind::Local, &tracks);
+        artist_stats_line(app, ui, &a.name);
         if tracks.is_empty() {
             widgets::note(ui, "No local files by this artist (the artist tag must match). Rescan in Settings › Music Services › Local files if you added music.");
         }
@@ -852,6 +854,24 @@ fn local_artist(app: &mut AquaApp, ui: &mut Ui, a: &Artist) {
         artist_sections(app, ui, &show);
         artist_extra_sections(app, ui, &a.name, ProviderKind::Local);
     });
+}
+
+/// Listener line under the artist header (Last.fm, when a key is set). Spotify's
+/// monthly listeners aren't available to apps, so this is labelled as Last.fm data.
+fn artist_stats_line(app: &AquaApp, ui: &mut Ui, name: &str) {
+    let Some(e) = app.view.artist_extra.get(name) else { return };
+    let mut parts = Vec::new();
+    if let Some(l) = e.listeners {
+        parts.push(format!("{} listeners", crate::util::fmt_count(l)));
+    }
+    if let Some(p) = e.playcount {
+        parts.push(format!("{} plays", crate::util::fmt_count(p)));
+    }
+    if parts.is_empty() {
+        return;
+    }
+    ui.label(RichText::new(format!("{}  ·  Last.fm", parts.join("  ·  "))).color(ui.visuals().weak_text_color()))
+        .on_hover_text("All-time listeners and plays recorded on Last.fm. Spotify doesn't make its monthly-listener count available to apps, so it can't be shown.");
 }
 
 /// Start the Last.fm request for similar artists + biography (once per artist).
@@ -869,8 +889,12 @@ fn request_artist_extra(app: &mut AquaApp, name: &str) {
             Ok(v) => extra.similar = v.into_iter().map(|(n, _)| n).filter(|n| !n.eq_ignore_ascii_case(&name)).collect(),
             Err(e) => extra.error = Some(e.to_string()),
         }
-        match lf.artist_bio(&name) {
-            Ok(b) => extra.bio = b,
+        match lf.artist_info(&name) {
+            Ok(i) => {
+                extra.bio = i.bio;
+                extra.listeners = i.listeners;
+                extra.playcount = i.playcount;
+            }
             Err(e) => extra.error = extra.error.or(Some(e.to_string())),
         }
         h.send(super::jobs::Msg::ArtistExtra { name, extra });
@@ -880,7 +904,7 @@ fn request_artist_extra(app: &mut AquaApp, name: &str) {
 fn artist_extra_sections(app: &mut AquaApp, ui: &mut Ui, name: &str, p: ProviderKind) {
     if app.lastfm_key.trim().is_empty() {
         ui.add_space(8.0);
-        ui.label(RichText::new("Similar artists and a biography come from Last.fm — add a Last.fm API key in Settings › Playback (Similarity Radio) to see them.").small().color(ui.visuals().weak_text_color()));
+        ui.label(RichText::new("Similar artists, listener counts and a biography come from Last.fm — add a Last.fm API key in Settings › Playback (Similarity Radio) to see them.").small().color(ui.visuals().weak_text_color()));
         return;
     }
     let Some(extra) = app.view.artist_extra.get(name).cloned() else { return };

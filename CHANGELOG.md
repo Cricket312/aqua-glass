@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.10.1 — 2026-11-24 (listener counts on artist pages)
+
+### Added
+- **Listener counts on artist pages**, e.g. "6,012,345 listeners · 812,345,678 plays ·
+  Last.fm", under the artist's name for Spotify and local artists (with a Last.fm key).
+  - They come from the same Last.fm `artist.getInfo` request as the biography, so there
+    is no extra request.
+  - These are Last.fm's all-time figures, labelled as such, with a tooltip.
+- **Why not Spotify's monthly listeners:** the Spotify Web API doesn't provide them, and
+  since February 2026 it doesn't return follower counts either. Taking them from
+  Spotify's web player would mean scraping, which Aqua Glass doesn't do.
+
 ## 0.10.0 — 2026-11-22 (portrait volume, artist pages fixed, Essential Mode)
 
 ### Fixed

@@ -37,6 +37,9 @@ pub enum Msg {
 pub struct ArtistExtra {
     pub similar: Vec<String>,
     pub bio: Option<String>,
+    /// Last.fm all-time listeners and scrobbles.
+    pub listeners: Option<u64>,
+    pub playcount: Option<u64>,
     pub error: Option<String>,
 }
 

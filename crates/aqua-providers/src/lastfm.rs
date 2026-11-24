@@ -70,6 +70,22 @@ pub fn parse_top_tracks(v: &serde_json::Value) -> Vec<Similar> {
         .collect()
 }
 
+/// What Last.fm's `artist.getInfo` tells about an artist.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ArtistInfo {
+    pub bio: Option<String>,
+    /// Distinct Last.fm users who have ever scrobbled the artist (all time —
+    /// not Spotify's "monthly listeners", which no public API provides).
+    pub listeners: Option<u64>,
+    /// Total scrobbles (plays recorded on Last.fm).
+    pub playcount: Option<u64>,
+}
+
+pub fn parse_artist_info(v: &serde_json::Value) -> ArtistInfo {
+    let stat = |k: &str| num(&v["artist"]["stats"][k]).filter(|n| *n > 0.0).map(|n| n as u64);
+    ArtistInfo { bio: parse_bio(v), listeners: stat("listeners"), playcount: stat("playcount") }
+}
+
 /// Plain-text biography summary from an `artist.getInfo` response: Last.fm's HTML
 /// "Read more on Last.fm" link and other tags removed, whitespace tidied.
 pub fn parse_bio(v: &serde_json::Value) -> Option<String> {
@@ -148,9 +164,9 @@ impl LastFm {
         Ok(parse_top_tracks(&self.call(&[("method", "artist.gettoptracks"), ("artist", artist), ("limit", &l)])?))
     }
 
-    /// Short artist biography (Last.fm's `artist.getInfo` summary), if Last.fm has one.
-    pub fn artist_bio(&self, artist: &str) -> anyhow::Result<Option<String>> {
-        Ok(parse_bio(&self.call(&[("method", "artist.getinfo"), ("artist", artist)])?))
+    /// Biography and listener statistics (one `artist.getInfo` request).
+    pub fn artist_info(&self, artist: &str) -> anyhow::Result<ArtistInfo> {
+        Ok(parse_artist_info(&self.call(&[("method", "artist.getinfo"), ("artist", artist)])?))
     }
 
     /// Validate the key with a cheap call.
@@ -191,5 +207,19 @@ mod bio_tests {
         assert_eq!(super::parse_bio(&v).unwrap(), "Radiohead are an English rock band formed in Abingdon in 1985.");
         assert!(super::parse_bio(&serde_json::json!({"artist": {"bio": {"summary": " <a href=\"x\">Read more</a>"}}})).is_none());
         assert!(super::parse_bio(&serde_json::Value::Null).is_none());
+    }
+}
+
+#[cfg(test)]
+mod artist_info_tests {
+    #[test]
+    fn listener_stats_are_read_from_strings_or_numbers() {
+        let v = serde_json::json!({"artist": {"stats": {"listeners": "6012345", "playcount": 812345678}, "bio": {"summary": "An English rock band formed in Abingdon in 1985."}}});
+        let i = super::parse_artist_info(&v);
+        assert_eq!(i.listeners, Some(6_012_345));
+        assert_eq!(i.playcount, Some(812_345_678));
+        assert!(i.bio.is_some());
+        let none = super::parse_artist_info(&serde_json::json!({"artist": {"stats": {"listeners": "0"}}}));
+        assert_eq!((none.listeners, none.playcount), (None, None), "zero / missing stats aren't shown");
     }
 }

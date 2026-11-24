@@ -148,6 +148,19 @@ pub fn icontains(hay: &str, needle: &str) -> bool {
 /// keeps it cached (used when entering Essential Mode). glibc keeps freed heap
 /// pages mapped until `malloc_trim`; the Windows heap decommits large free blocks
 /// by itself, so nothing is needed there.
+/// 1234567 → "1,234,567".
+pub fn fmt_count(n: u64) -> String {
+    let s = n.to_string();
+    let mut out = String::with_capacity(s.len() + s.len() / 3);
+    for (i, c) in s.chars().enumerate() {
+        if i > 0 && (s.len() - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
+
 pub fn release_free_memory() {
     #[cfg(all(target_os = "linux", target_env = "gnu"))]
     {
@@ -158,5 +171,16 @@ pub fn release_free_memory() {
         unsafe {
             malloc_trim(0);
         }
+    }
+}
+
+#[cfg(test)]
+mod count_tests {
+    #[test]
+    fn thousands_separators() {
+        assert_eq!(super::fmt_count(0), "0");
+        assert_eq!(super::fmt_count(999), "999");
+        assert_eq!(super::fmt_count(1000), "1,000");
+        assert_eq!(super::fmt_count(6012345), "6,012,345");
     }
 }

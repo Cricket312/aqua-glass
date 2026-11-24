@@ -336,7 +336,10 @@ to open the artist page. Spotify artists show:
 * **Popular on Spotify** — Spotify removed its "artist top tracks" endpoint in February
   2026, so these are Spotify's best search matches credited to the artist;
 * **Albums** and **Singles and EPs**;
-* with a Last.fm key: **Similar artists** and an **About** biography.
+* with a Last.fm key: a **listeners and plays** line under the name, **Similar artists**,
+  and an **About** biography. These are Last.fm's all-time figures. Spotify's "monthly
+  listeners" number isn't available to apps through any official API, and reading it from
+  Spotify's website would mean scraping it, so Aqua Glass doesn't show it.
 
 Spotify no longer provides related artists, follower counts or popularity, so they
 aren't shown. Each section loads on its own: if one fails, the rest still shows with a
