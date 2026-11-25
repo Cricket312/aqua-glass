@@ -425,7 +425,10 @@ fn song_rows(app: &mut AquaApp, ui: &mut Ui, tracks: &[Track]) {
                 ui.add(egui::Label::new(RichText::new(t.artist_line()).size(12.0).color(ui.visuals().weak_text_color())).truncate());
             });
         });
-        ui2.add_sized([w * 0.25, 20.0], egui::Label::new(RichText::new(&t.album).size(12.5).color(ui2.visuals().weak_text_color())).truncate());
+        // narrow windows (portrait): no album column, so the title keeps its room
+        if w >= 560.0 {
+            ui2.add_sized([w * 0.25, 20.0], egui::Label::new(RichText::new(&t.album).size(12.5).color(ui2.visuals().weak_text_color())).truncate());
+        }
         ui2.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.label(RichText::new(fmt_ms(t.duration_ms)).size(12.0).color(ui.visuals().weak_text_color()));
             if resp.hovered() || resp.has_focus() {

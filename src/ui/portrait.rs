@@ -72,7 +72,18 @@ pub fn shell(app: &mut AquaApp, ui: &mut Ui) {
         match page {
             Page::NowPlaying => playing(app, ui),
             Page::Home => super::browse::home(app, ui),
-            Page::Search => super::browse::search(app, ui),
+            Page::Search => {
+                // portrait has no top bar: the search field sits at the top of the page
+                let w = ui.available_width();
+                ui.horizontal(|ui| {
+                    super::shell::search_pill(app, ui, w, "Songs, artists, albums…");
+                    if app.search.pending > 0 {
+                        ui.spinner();
+                    }
+                });
+                ui.add_space(8.0);
+                super::browse::search(app, ui)
+            }
             Page::Discover => super::browse::discover(app, ui),
             Page::Queue => {
                 // the queue lives in the Playing screen's Queue tab in portrait
@@ -395,6 +406,9 @@ fn bottom_nav(app: &mut AquaApp, ui: &mut Ui) {
             p.text(rect.center() - egui::vec2(0.0, 8.0), egui::Align2::CENTER_CENTER, ic, egui::FontId::proportional(17.0), col);
             p.text(rect.center() + egui::vec2(0.0, 12.0), egui::Align2::CENTER_CENTER, label, egui::FontId::proportional(11.5), col);
             if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                if page == Page::Search {
+                    app.search.focus = true; // ready to type
+                }
                 app.navigate(page);
             }
         }

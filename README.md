@@ -172,6 +172,8 @@ phone-like column and restores the previous size afterwards. The portrait screen
 * the **Playing** screen: large artwork, clickable title (album) and artist (artist page),
   like, progress, the player controls, and one **Queue / Lyrics / Discover** tab at a time;
 * a mini player on other pages, and a bottom bar (Playing, Home, Search, Library).
+* a full-width search field at the top of the Search page (tapping Search puts the cursor
+  in it).
 
 It is the same app underneath: the player, music services, Similarity Radio, library and
 artwork cache are shared, so switching never starts anything twice and playback continues

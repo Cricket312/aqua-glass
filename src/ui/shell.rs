@@ -306,30 +306,52 @@ fn top_bar(app: &mut AquaApp, ui: &mut Ui) {
         let avail = ui.available_width();
         let w = (avail - 40.0).clamp(240.0, 600.0);
         ui.add_space(((avail - w) / 2.0 - 40.0).max(12.0));
-        let v = ui.visuals().clone();
-        let mut submit = false;
-        egui::Frame::new().fill(v.faint_bg_color).stroke(egui::Stroke::new(1.0, v.widgets.noninteractive.bg_stroke.color)).corner_radius(20).inner_margin(egui::Margin { left: 14, right: 6, top: 4, bottom: 4 }).show(ui, |ui| {
-            ui.set_width(w - 20.0);
-            ui.horizontal(|ui| {
-                ui.label(RichText::new(icon::SEARCH()).size(15.0).color(v.text_color()));
-                let te = ui.add(egui::TextEdit::singleline(&mut app.top_search).frame(egui::Frame::NONE).hint_text("Search for songs, artists, albums, playlists…").desired_width(w - 100.0).vertical_align(egui::Align::Center));
-                if app.search.focus {
-                    te.request_focus();
-                    app.search.focus = false;
-                }
-                submit = te.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                filter_menu(app, ui);
-            });
-        });
-        if submit && !app.top_search.trim().is_empty() {
-            app.search.query = app.top_search.clone();
-            app.navigate(Page::Search);
-            app.run_search();
-        }
+        search_pill(app, ui, w, "Search for songs, artists, albums, playlists…");
         if app.search.pending > 0 {
             ui.spinner();
         }
     });
+}
+
+/// The search field (pill with the service-filter button), `w` wide. Shared by the
+/// landscape top bar and the portrait Search page; Enter runs the search.
+pub(super) fn search_pill(app: &mut AquaApp, ui: &mut Ui, w: f32, hint: &str) {
+    let v = ui.visuals().clone();
+    let mut submit = false;
+    egui::Frame::new().fill(v.faint_bg_color).stroke(egui::Stroke::new(1.0, v.widgets.noninteractive.bg_stroke.color)).corner_radius(20).inner_margin(egui::Margin { left: 14, right: 6, top: 4, bottom: 4 }).show(ui, |ui| {
+        ui.set_width(w - 20.0);
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(icon::SEARCH()).size(15.0).color(v.text_color()));
+            // leave room for the icon, the filter button and the clear button
+            let te = ui.add(egui::TextEdit::singleline(&mut app.top_search).frame(egui::Frame::NONE).hint_text(hint).desired_width((w - 110.0).max(60.0)).vertical_align(egui::Align::Center));
+            if app.search.focus {
+                te.request_focus();
+                app.search.focus = false;
+            }
+            submit = te.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                filter_menu(app, ui);
+                if !app.top_search.is_empty() {
+                    // vector ✕ (no font dependency)
+                    let (rect, r) = ui.allocate_exact_size(egui::vec2(22.0, 22.0), egui::Sense::click());
+                    let c = if r.hovered() { v.text_color() } else { v.weak_text_color() };
+                    let (m, s) = (rect.center(), 4.5);
+                    let st = egui::Stroke::new(1.5, c);
+                    ui.painter().line_segment([m + egui::vec2(-s, -s), m + egui::vec2(s, s)], st);
+                    ui.painter().line_segment([m + egui::vec2(-s, s), m + egui::vec2(s, -s)], st);
+                    if r.on_hover_text("Clear").on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                        app.top_search.clear();
+                        app.search.focus = true;
+                    }
+                }
+            });
+        });
+    });
+    if submit && !app.top_search.trim().is_empty() {
+        app.search.query = app.top_search.clone();
+        app.navigate(Page::Search);
+        app.run_search();
+    }
 }
 
 /// Search scope / service filter + account status, behind the pill's filter button.

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.10.2 — 2026-11-25 (search in portrait mode)
+
+### Fixed
+- **Portrait mode had no search box.** The Search page said "type in the search box
+  above", but that box only existed in landscape's top bar.
+  - Portrait's Search page now starts with a full-width search field, using the same
+    component as landscape (search icon, service-filter button, Enter to search).
+  - Tapping Search in the bottom bar puts the cursor in it.
+- Search results on narrow windows no longer squeeze the album name into the play button:
+  below 560 px the album column is hidden.
+
+### Added
+- A clear (✕) button in the search field, in both layouts.
+
 ## 0.10.1 — 2026-11-24 (listener counts on artist pages)
 
 ### Added
